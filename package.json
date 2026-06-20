@@ -1,0 +1,28 @@
+{
+  "name": "amazon-scraper",
+  "version": "1.0.0",
+  "description": "Amazon 商品价格抓取器 — 输入关键字，一键抓取商品、价格、评分，按表格展示并支持 CSV 导出",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "amazon",
+    "scraper",
+    "price",
+    "puppeteer",
+    "express"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "puppeteer": "^25.1.0"
+  }
+}

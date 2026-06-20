@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Amazon 商品价格抓取</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+    min-height: 100vh;
+  }
+  .container {
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 32px 24px 80px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .logo {
+    width: 44px; height: 44px; border-radius: 10px;
+    background: linear-gradient(135deg, #ff9900, #f90);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 22px; color: #0f172a;
+    letter-spacing: -1px;
+  }
+  h1 { margin: 0; font-size: 24px; letter-spacing: 0.2px; }
+  .subtitle { color: #94a3b8; font-size: 13px; margin-top: 2px; }
+
+  .search-bar {
+    display: flex;
+    gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 12px;
+    backdrop-filter: blur(8px);
+  }
+  .search-bar input {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #fff;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 15px;
+    outline: none;
+    transition: border-color .15s, background .15s;
+  }
+  .search-bar input:focus {
+    border-color: #ff9900;
+    background: rgba(255,153,0,0.08);
+  }
+  .search-bar .select-wrap {
+    display: flex; align-items: center;
+    background: rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 0 4px 0 12px;
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 13px; color: #94a3b8;
+    gap: 6px;
+  }
+  .search-bar select {
+    background: transparent; color: #fff; border: none;
+    padding: 10px 8px; font-size: 14px; cursor: pointer;
+    outline: none;
+  }
+  .btn {
+    background: linear-gradient(135deg, #ff9900, #f90);
+    color: #0f172a; border: none; border-radius: 10px;
+    padding: 0 26px; font-weight: 700; font-size: 14px;
+    cursor: pointer; min-width: 110px;
+    transition: transform .08s, box-shadow .15s;
+  }
+  .btn:hover {
+    box-shadow: 0 8px 24px rgba(249,153,0,0.3);
+    transform: translateY(-1px);
+  }
+  .btn:disabled {
+    opacity: 0.6; cursor: not-allowed; transform: none;
+  }
+
+  .loading {
+    display: none;
+    align-items: center; gap: 10px;
+    margin-top: 16px; color: #fbbf24; font-size: 14px;
+  }
+  .loading.active { display: flex; }
+  .spinner {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 2px solid rgba(251,191,36,0.3);
+    border-top-color: #fbbf24;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty {
+    text-align: center; color: #64748b;
+    padding: 80px 20px;
+    background: rgba(255,255,255,0.02);
+    border-radius: 14px;
+    border: 1px dashed rgba(255,255,255,0.08);
+  }
+  .empty .hint { font-size: 13px; margin-top: 8px; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px; margin: 24px 0 16px;
+  }
+  .stat-card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .stat-card .label { font-size: 12px; color: #94a3b8; }
+  .stat-card .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .stat-card .value.green { color: #22c55e; }
+  .stat-card .value.amber { color: #f59e0b; }
+  .stat-card .value.red { color: #f87171; }
+
+  .table-wrap {
+    background: rgba(15,23,42,0.4);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead {
+    background: rgba(255,255,255,0.04);
+    position: sticky; top: 0; z-index: 2;
+  }
+  th {
+    text-align: left;
+    padding: 12px 14px;
+    font-weight: 600;
+    color: #94a3b8;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  th:hover { color: #fff; }
+  th .arrow { margin-left: 4px; opacity: 0.5; }
+  th.sorted .arrow { opacity: 1; color: #fbbf24; }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: middle;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .col-img { width: 72px; }
+  .col-img img {
+    width: 52px; height: 52px; object-fit: contain;
+    border-radius: 6px;
+    background: #1e293b;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .col-title { min-width: 240px; }
+  .col-title a {
+    color: #e2e8f0;
+    text-decoration: none;
+    line-height: 1.4;
+  }
+  .col-title a:hover { color: #fbbf24; text-decoration: underline; }
+  .col-price { width: 140px; font-weight: 700; white-space: nowrap; }
+  .price-num { color: #22c55e; }
+  .price-na { color: #78716c; font-weight: 500; font-size: 12px; }
+  .col-rating { width: 90px; }
+  .rating-bar {
+    display: flex; gap: 2px; align-items: center;
+  }
+  .star { color: #fbbf24; font-size: 14px; line-height: 1; }
+  .star.empty { color: #374151; }
+  .rating-num { color: #94a3b8; font-size: 12px; margin-left: 4px; }
+  .col-link { width: 60px; }
+  .col-link a {
+    color: #ff9900; text-decoration: none;
+    font-size: 12px; font-weight: 600;
+  }
+  .col-link a:hover { text-decoration: underline; }
+
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    flex-wrap: wrap;
+  }
+  .filter-wrap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chip {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .12s;
+  }
+  .chip.active {
+    background: rgba(255,153,0,0.15);
+    border-color: #ff9900;
+    color: #fbbf24;
+  }
+  .toolbar-right { display: flex; gap: 8px; }
+  .mini-btn {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #e2e8f0;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .mini-btn:hover { border-color: #ff9900; color: #fbbf24; }
+
+  @media (max-width: 720px) {
+    .search-bar { flex-wrap: wrap; }
+    h1 { font-size: 20px; }
+    td, th { padding: 8px 8px; }
+    .col-title { min-width: 140px; }
+    .col-img img { width: 36px; height: 36px; }
+  }
+</style>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">amz</div>
+    <div>
+      <h1>Amazon 商品价格抓取器</h1>
+      <div class="subtitle">输入关键字，一键抓取商品、价格、评分，按表格展示</div>
+    </div>
+  </header>
+
+  <div class="search-bar">
+    <input id="keyword" type="text" placeholder="输入关键字，如 laptop、gaming laptop、MacBook..." value="laptop" />
+    <div class="select-wrap">
+      <span>页数</span>
+      <select id="pages">
+        <option value="1">1 页</option>
+        <option value="2">2 页</option>
+        <option value="3" selected>3 页</option>
+        <option value="5">5 页</option>
+        <option value="10">10 页</option>
+      </select>
+    </div>
+    <button class="btn" id="go">立即抓取</button>
+  </div>
+
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <span id="loading-text">正在打开浏览器并抓取数据，请稍候...</span>
+  </div>
+
+  <div class="empty" id="empty">
+    <div style="font-size:48px;opacity:.4;">🛒</div>
+    <div style="font-size:16px;margin-top:8px;">输入关键字后点击「立即抓取」</div>
+    <div class="hint">会在本地启动无头浏览器访问 Amazon，抓完后自动关掉，不会记录任何 Cookie 或账号信息</div>
+  </div>
+
+  <div id="results" style="display:none;">
+    <div class="stats" id="stats"></div>
+
+    <div class="table-wrap">
+      <div class="toolbar">
+        <div class="filter-wrap" id="filters"></div>
+        <div class="toolbar-right">
+          <button class="mini-btn" id="export-csv">导出 CSV</button>
+        </div>
+      </div>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th class="col-img">图片</th>
+            <th class="col-title" data-sort="none">商品名称 <span class="arrow">↕</span></th>
+            <th class="col-price" data-sort="price">价格 <span class="arrow">↕</span></th>
+            <th class="col-rating" data-sort="rating">评分 <span class="arrow">↕</span></th>
+            <th class="col-link">链接</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const keywordEl = document.getElementById('keyword');
+const pagesEl = document.getElementById('pages');
+const goBtn = document.getElementById('go');
+const loadingEl = document.getElementById('loading');
+const loadingTextEl = document.getElementById('loading-text');
+const emptyEl = document.getElementById('empty');
+const resultsEl = document.getElementById('results');
+const statsEl = document.getElementById('stats');
+const filtersEl = document.getElementById('filters');
+const tbodyEl = document.getElementById('tbody');
+
+let rawItems = [];
+let currentFilter = 'all';
+let sortState = { key: 'none', dir: 1 };
+
+function renderStats(data) {
+  const pct = data.total ? Math.round((data.withPrice / data.total) * 100) : 0;
+  statsEl.innerHTML = `
+    <div class="stat-card">
+      <div class="label">抓取商品总数</div>
+      <div class="value">${data.total}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">来源</div>
+      <div class="value amber">amazon · ${data.pagesScraped} 页</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">有价格</div>
+      <div class="value green">${data.withPrice}（${pct}%）</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">无价格</div>
+      <div class="value red">${data.withoutPrice}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">最低</div>
+      <div class="value green">${data.minPrice || '—'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">最高</div>
+      <div class="value amber">${data.maxPrice || '—'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">平均</div>
+      <div class="value">${data.avgPrice || '—'}</div>
+    </div>
+  `;
+}
+
+function renderFilters(data) {
+  const chips = [
+    { k: 'all', label: `全部 (${data.total})` },
+    { k: 'price', label: `有价格 (${data.withPrice})` },
+    { k: 'noprice', label: `无价格 (${data.withoutPrice})` },
+  ];
+  filtersEl.innerHTML = chips.map(c =>
+    `<span class="chip ${c.k === currentFilter ? 'active' : ''}" data-k="${c.k}">${c.label}</span>`
+  ).join('');
+  filtersEl.querySelectorAll('.chip').forEach(el => {
+    el.addEventListener('click', () => {
+      currentFilter = el.dataset.k;
+      renderFilters(data);
+      renderTable();
+    });
+  });
+}
+
+function sortItems(items) {
+  const arr = [...items];
+  const { key, dir } = sortState;
+  if (key === 'price') {
+    arr.sort((a, b) => (a.priceNum || Infinity) * dir - (b.priceNum || Infinity) * dir);
+  } else if (key === 'rating') {
+    arr.sort((a, b) => (b.rating ?? 0) * dir - (a.rating ?? 0) * dir);
+  } else if (key === 'name') {
+    arr.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN') * dir);
+  } else if (key === 'none') {
+    arr.sort((a, b) => (a.priceNum || Infinity) - (b.priceNum || Infinity));
+  }
+  return arr;
+}
+
+function filterItems() {
+  if (currentFilter === 'price') return rawItems.filter(x => x.hasPrice);
+  if (currentFilter === 'noprice') return rawItems.filter(x => !x.hasPrice);
+  return rawItems;
+}
+
+function ratingStars(v) {
+  const full = Math.round(v || 0);
+  let html = '';
+  for (let i = 1; i <= 5; i++) {
+    html += `<span class="star ${i <= full ? '' : 'empty'}">★</span>`;
+  }
+  html += v ? `<span class="rating-num">${v.toFixed(1)}</span>` : '';
+  return html;
+}
+
+function renderTable() {
+  const items = sortItems(filterItems());
+  tbodyEl.innerHTML = items.map((x, i) => `
+    <tr>
+      <td class="col-img">
+        ${x.image ? `<img src="${x.image}" alt="" loading="lazy" onerror="this.style.opacity=.4"/>` : ''}
+      </td>
+      <td class="col-title">
+        <a href="${x.href}" target="_blank" rel="noopener" title="${x.title}">${x.title || '—'}</a>
+      </td>
+      <td class="col-price">
+        ${x.hasPrice
+          ? `<span class="price-num">${x.priceText}</span>`
+          : `<span class="price-na">${x.priceText}</span>`}
+      </td>
+      <td class="col-rating">
+        <div class="rating-bar">${ratingStars(x.rating)}</div>
+      </td>
+      <td class="col-link">
+        <a href="${x.href}" target="_blank" rel="noopener">打开 →</a>
+      </td>
+    </tr>
+  `).join('');
+
+  document.querySelectorAll('th[data-sort], th[data-sort="none"]').forEach(th => {
+    const k = th.dataset.sort;
+    if (k === 'none') return;
+    th.addEventListener('click', () => {
+      if (sortState.key === k) {
+        sortState.dir *= -1;
+      } else {
+        sortState.key = k;
+        sortState.dir = 1;
+      }
+      document.querySelectorAll('th').forEach(t => t.classList.remove('sorted'));
+      th.classList.add('sorted');
+      renderTable();
+    });
+  });
+}
+
+function exportCSV() {
+  const items = filterItems();
+  const rows = [['#', '商品名称', 'ASIN', '价格', '评分', '链接']];
+  items.forEach((x, i) => {
+    rows.push([
+      i + 1,
+      x.title.replace(/"/g, '""'),
+      x.asin,
+      x.hasPrice ? x.priceText : '没有标记价格或即将推出',
+      x.rating != null ? x.rating : '',
+      x.href,
+    ]);
+  });
+  const csv = rows.map(r =>
+    r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+  ).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `amazon-${encodeURIComponent(keywordEl.value)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('export-csv').addEventListener('click', exportCSV);
+
+async function go() {
+  const keyword = keywordEl.value.trim();
+  if (!keyword) { keywordEl.focus(); return; }
+  const pages = parseInt(pagesEl.value, 10);
+
+  goBtn.disabled = true;
+  emptyEl.style.display = 'none';
+  resultsEl.style.display = 'none';
+  loadingEl.classList.add('active');
+  loadingTextEl.textContent = `正在打开浏览器并抓取 " ${keyword} "（${pages} 页），请稍候...`;
+
+  try {
+    const res = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword, pages }),
+    });
+    if (!res.ok) throw new Error(`服务器错误：${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    rawItems = data.items || [];
+    sortState = { key: 'none', dir: 1 };
+    currentFilter = 'all';
+
+    loadingEl.classList.remove('active');
+    if (!rawItems.length) {
+      emptyEl.style.display = 'block';
+      emptyEl.innerHTML = `
+        <div style="font-size:48px;opacity:.4;">😕</div>
+        <div style="font-size:16px;margin-top:8px;">没抓到 "${keyword}" 的结果</div>
+        <div class="hint">可能触发了 Amazon 反爬。换个关键字试试，比如 "laptop"</div>
+      `;
+      return;
+    }
+
+    renderStats(data);
+    renderFilters(data);
+    renderTable();
+    resultsEl.style.display = 'block';
+  } catch (err) {
+    loadingEl.classList.remove('active');
+    emptyEl.style.display = 'block';
+    emptyEl.innerHTML = `
+      <div style="font-size:48px;opacity:.4;">⚠️</div>
+      <div style="font-size:16px;margin-top:8px;">抓取失败</div>
+      <div class="hint">${err.message}</div>
+    `;
+  } finally {
+    goBtn.disabled = false;
+  }
+}
+
+goBtn.addEventListener('click', go);
+keywordEl.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+</script>
+</body>
+</html>
