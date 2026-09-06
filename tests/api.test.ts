@@ -57,3 +57,33 @@ describe('POST /api/scrape (validation only)', () => {
       .expect(400);
   });
 });
+
+describe('POST /api/detail (validation only)', () => {
+  const config = loadConfig({ env: {}, envFilePath: '/nonexistent/.env' });
+  const app = createApp(config, { proxyPool: emptyPool });
+
+  it('rejects a request with no asin', async () => {
+    const res = await request(app)
+      .post('/api/detail')
+      .send({})
+      .set('content-type', 'application/json')
+      .expect(400);
+    expect(res.body.error).toMatch(/asin/i);
+  });
+
+  it.each([
+    ['too short', 'B09'],
+    ['too long', 'B09S3HNMHFXX'],
+    ['contains symbol', 'B09S3HNMH!'],
+    ['contains space', 'B09S3HNM F'],
+    ['empty string', ''],
+    ['whitespace only', '   '],
+    ['non-string', 12345],
+  ])('rejects asin that is %s', async (_label, asin) => {
+    await request(app)
+      .post('/api/detail')
+      .send({ asin })
+      .set('content-type', 'application/json')
+      .expect(400);
+  });
+});

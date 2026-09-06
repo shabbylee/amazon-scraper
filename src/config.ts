@@ -43,6 +43,8 @@ export interface AppConfig {
   readonly defaultMarketplace: MarketplaceId;
   readonly requestIntervalMs: number;
   readonly maxConcurrentAttempts: number;
+  /** Phase 3：详情页 Attempt 最小间隔（毫秒）。默认 5000，硬下限 2000。见 ADR-0004。 */
+  readonly detailIntervalMs: number;
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -84,6 +86,7 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
 
   const intervalRaw = Number.parseInt(read('REQUEST_INTERVAL_MS') ?? '2000', 10);
   const concurrencyRaw = Number.parseInt(read('MAX_CONCURRENT_ATTEMPTS') ?? '1', 10);
+  const detailIntervalRaw = Number.parseInt(read('DETAIL_INTERVAL_MS') ?? '5000', 10);
 
   return {
     port,
@@ -97,6 +100,10 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     maxConcurrentAttempts: Math.min(
       MAX_CONCURRENT_ATTEMPTS,
       Math.max(1, Number.isFinite(concurrencyRaw) ? concurrencyRaw : 1)
+    ),
+    detailIntervalMs: Math.max(
+      MIN_REQUEST_INTERVAL_MS,
+      Number.isFinite(detailIntervalRaw) ? detailIntervalRaw : 5000
     ),
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,

@@ -52,6 +52,21 @@ describe('loadConfig', () => {
     expect(c.maxConcurrentAttempts).toBe(MAX_CONCURRENT_ATTEMPTS);
   });
 
+  it('defaults detailIntervalMs to 5000ms (ADR-0004)', () => {
+    const c = loadConfig(opts({}));
+    expect(c.detailIntervalMs).toBe(5000);
+  });
+
+  it('clamps detailIntervalMs to the same 2000ms floor as requestIntervalMs', () => {
+    const c = loadConfig(opts({ DETAIL_INTERVAL_MS: '500' }));
+    expect(c.detailIntervalMs).toBe(MIN_REQUEST_INTERVAL_MS);
+  });
+
+  it('honors a custom DETAIL_INTERVAL_MS above the floor', () => {
+    const c = loadConfig(opts({ DETAIL_INTERVAL_MS: '10000' }));
+    expect(c.detailIntervalMs).toBe(10000);
+  });
+
   it('rejects an unsupported DEFAULT_MARKETPLACE with a helpful error', () => {
     expect(() => loadConfig(opts({ DEFAULT_MARKETPLACE: 'xx' }))).toThrowError(
       /Unsupported DEFAULT_MARKETPLACE: xx/

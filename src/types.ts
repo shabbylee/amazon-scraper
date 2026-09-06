@@ -72,3 +72,86 @@ export interface ScrapeResult {
   readonly listings: readonly Listing[];
   readonly attempts: readonly AttemptSummary[];
 }
+
+/** Phase 3：Buy Box 库存状态。unknown 表示 DOM 里识别不出明确文案。 */
+export type Availability =
+  | 'in-stock'
+  | 'out-of-stock'
+  | 'pre-order'
+  | 'backorder'
+  | 'unavailable'
+  | 'unknown';
+
+/** Phase 3：详情页 Buy Box（"加入购物车"归属的卖家 Offer）。见 CONTEXT.md。 */
+export interface BuyBox {
+  readonly priceText: string | null;
+  readonly priceNum: number | null;
+  readonly currency: string | null;
+  readonly shippingText: string | null;
+  readonly sellerName: string | null;
+  readonly isPrime: boolean;
+  readonly availability: Availability;
+}
+
+/** Phase 3：评论统计。breakdown 里每项是 0-100 的百分比，抓不到为 null。 */
+export interface ReviewStats {
+  readonly totalCount: number | null;
+  readonly averageRating: number | null;
+  readonly breakdown: {
+    readonly star5: number | null;
+    readonly star4: number | null;
+    readonly star3: number | null;
+    readonly star2: number | null;
+    readonly star1: number | null;
+  };
+}
+
+/** Phase 3：商品变体（颜色 / 尺寸 / 容量 …）。dimensions 是维度名到值的映射。 */
+export interface Variant {
+  readonly asin: string;
+  readonly label: string;
+  readonly dimensions: Readonly<Record<string, string>>;
+  readonly image: string | null;
+  readonly isCurrent: boolean;
+}
+
+/** Phase 3：技术参数表的一行。 */
+export interface ProductSpec {
+  readonly key: string;
+  readonly value: string;
+}
+
+/** Phase 3：详情页的完整领域对象。见 docs/adr/0004-phase3-product-detail.md。 */
+export interface ProductDetail {
+  readonly marketplace: MarketplaceId;
+  readonly asin: string;
+  readonly title: string;
+  readonly brand: string | null;
+  readonly href: string;
+  readonly images: readonly string[];
+  readonly breadcrumbs: readonly string[];
+  readonly description: string | null;
+  readonly bullets: readonly string[];
+  readonly specs: readonly ProductSpec[];
+  readonly buyBox: BuyBox;
+  readonly reviews: ReviewStats;
+  readonly variants: readonly Variant[];
+  /** ISO 8601 抓取时间戳，Phase 4 会与 Price Snapshot 关联。 */
+  readonly capturedAt: string;
+}
+
+/** ASIN 是 10 位字母数字（大写字母 + 数字），见 CONTEXT.md。 */
+export function isAsin(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Z0-9]{10}$/.test(value);
+}
+
+/** Phase 3：一次详情页 Attempt 的摘要。没有 page/listingCount，改用 asin。 */
+export interface DetailAttemptSummary {
+  readonly asin: string;
+  readonly ok: boolean;
+  readonly durationMs: number;
+  readonly failure?: FailureClass;
+  readonly message?: string;
+  readonly retryCount?: number;
+  readonly retryDelaysMs?: readonly number[];
+}
