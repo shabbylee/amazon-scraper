@@ -53,8 +53,9 @@ docker compose up --build
 | `HEADLESS` | `true` | `false` = 弹出可见 Chrome 窗口（排查反爬用） |
 | `CHROME_PATH` | 自动探测 | 手动指定 Chrome 可执行文件路径 |
 | `DEFAULT_MARKETPLACE` | `com` | 目前只支持美国站 `com`；多站点扩展未列入近期路线图 |
-| `REQUEST_INTERVAL_MS` | `2000` | 相邻 Attempt 最小间隔（毫秒）。**硬下限 2000**，配低了会被夹紧 |
+| `REQUEST_INTERVAL_MS` | `2000` | 相邻搜索页 Attempt 最小间隔（毫秒）。**硬下限 2000**，配低了会被夹紧 |
 | `MAX_CONCURRENT_ATTEMPTS` | `1` | 并发 Attempt 上限。**硬上限 2**，配高了会被夹紧 |
+| `DETAIL_INTERVAL_MS` | `5000` | 详情页 Attempt 最小间隔（毫秒）。**硬下限 2000**。Amazon 对 `/dp/` 保护更强，默认比搜索页保守，见 [ADR-0004](docs/adr/0004-phase3-product-detail.md) |
 | `HTTP_PROXY_LIST` | 空 | 逗号分隔的代理 URL 列表（`http://user:pass@host:port`）；留空 = 不用代理；连续失败 3 次的端点进入 30s 冷却 |
 
 前两个数值型硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。代理策略见 [`docs/adr/0003-phase2-scrape-stability.md`](docs/adr/0003-phase2-scrape-stability.md)。
@@ -79,32 +80,36 @@ amazon-scraper/
 │   ├── adr/
 │   │   ├── 0001-four-phase-roadmap.md
 │   │   ├── 0002-typescript-migration.md
-│   │   └── 0003-phase2-scrape-stability.md
+│   │   ├── 0003-phase2-scrape-stability.md
+│   │   └── 0004-phase3-product-detail.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
 ├── .scratch/                 # 本地 issue tracker（feature-slug/spec.md + issues/NN-*.md）
 ├── src/
 │   ├── index.ts              # 入口：loadConfig → createApp → listen + graceful shutdown
 │   ├── app.ts                # createApp 工厂（可脱离 listen 单测，注入 ProxyPool）
 │   ├── config.ts             # AppConfig + loadConfig；夹紧 AGENTS.md 硬约束
-│   ├── types.ts              # Marketplace / Listing / ScrapeJob / AttemptSummary / FailureClass
+│   ├── types.ts              # Marketplace / Listing / ScrapeJob / AttemptSummary / FailureClass / BuyBox / ReviewStats / Variant / ProductSpec / ProductDetail / DetailAttemptSummary
 │   ├── routes/
 │   │   ├── health.ts         # GET /api/health（含 proxyPoolSize）
-│   │   └── scrape.ts         # POST /api/scrape（acquire → launch → run → release）
+│   │   ├── scrape.ts         # POST /api/scrape（acquire → launch → run → release）
+│   │   └── detail.ts         # POST /api/detail（单 ASIN 按需详情）
 │   ├── scraper/
 │   │   ├── browser.ts        # puppeteer-extra + stealth；detectChromePath / launchBrowser（可选 proxy）
 │   │   ├── retry.ts          # RetryPolicy / withRetry（按 FailureClass 分类，指数退避）
-│   │   └── search.ts         # buildSearchUrl / classifyError / classifyHttpStatus / detectCaptchaFromSignals / scrapeSearchPage / runSearchJob
+│   │   ├── search.ts         # buildSearchUrl / classifyError / classifyHttpStatus / detectCaptchaFromSignals / scrapeSearchPage / runSearchJob
+│   │   └── detail.ts         # buildDetailUrl / scrapeDetailPage / runDetailJob
 │   ├── proxy/
 │   │   ├── types.ts          # ProxyPool 接口（acquire / release / size）
 │   │   ├── parse.ts          # parseProxyUrl / parseProxyList
 │   │   ├── memory-pool.ts    # MemoryProxyPool（round-robin + 失败阈值 → 冷却）
 │   │   └── index.ts          # createProxyPoolFromEnv 工厂
 │   └── parser/
-│       └── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 toListings（类型守卫）
+│       ├── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 toListings（类型守卫）
+│       └── detail-page.ts    # 浏览器侧 extractProductDetailInPage + Node 侧 toProductDetail（Buy Box / 评论 / 变体 / specs / 图片 / bullets）
 ├── tests/
 │   └── api.test.ts           # supertest 集成测试
 └── public/
-    └── index.html            # 前端（零依赖单文件）
+    └── index.html            # 前端（零依赖单文件，含详情模态框）
 ```
 
 ## API
@@ -189,6 +194,78 @@ amazon-scraper/
 - `parser-miss` — 页面拿到了但没解析到 Listing（Amazon 改了 DOM 结构？空搜索结果？）。**不重试**
 - `unknown` — 兜底（含 HTTP 403 但非 CAPTCHA 页面）。**不重试**，避免掩盖 bug
 
+### `POST /api/detail`
+
+按需抓取单个商品的详情页（Buy Box / 评论 / 变体 / 描述 / 图片 / 参数）。见 [`docs/adr/0004-phase3-product-detail.md`](docs/adr/0004-phase3-product-detail.md)。
+
+请求：
+
+```json
+{
+  "asin": "B09S3HNMHF",
+  "marketplace": "com"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `asin` | string | **必填**，10 位大写字母数字；小写会被自动 upper-case；非法返回 400 |
+| `marketplace` | string | 可选，默认走 `DEFAULT_MARKETPLACE` |
+
+响应：
+
+```json
+{
+  "asin": "B09S3HNMHF",
+  "marketplace": "com",
+  "proxyUsed": "proxy1.example.com:3128",
+  "detail": {
+    "marketplace": "com",
+    "asin": "B09S3HNMHF",
+    "title": "Samsung 14\" Galaxy Chromebook Go...",
+    "brand": "Samsung",
+    "href": "https://www.amazon.com/dp/B09S3HNMHF",
+    "images": ["https://m.media-amazon.com/images/I/...jpg"],
+    "breadcrumbs": ["Electronics", "Computers & Accessories", "Laptops"],
+    "description": "…",
+    "bullets": ["14\" HD display", "Intel Celeron N4500", "…"],
+    "specs": [
+      { "key": "Brand", "value": "Samsung" },
+      { "key": "Item Weight", "value": "3.2 pounds" }
+    ],
+    "buyBox": {
+      "priceText": "$249.00",
+      "priceNum": 249,
+      "currency": "$",
+      "shippingText": "FREE delivery Tue, Sep 9",
+      "sellerName": "Amazon.com",
+      "isPrime": true,
+      "availability": "in-stock"
+    },
+    "reviews": {
+      "totalCount": 1234,
+      "averageRating": 4.3,
+      "breakdown": { "star5": 60, "star4": 25, "star3": 10, "star2": 3, "star1": 2 }
+    },
+    "variants": [
+      { "asin": "B09S3HNMHF", "label": "Silver", "dimensions": { "Color": "Silver" }, "image": "…", "isCurrent": true }
+    ],
+    "capturedAt": "2026-09-06T12:34:56.789Z"
+  },
+  "attempt": {
+    "asin": "B09S3HNMHF",
+    "ok": true,
+    "durationMs": 5432,
+    "retryCount": 0,
+    "retryDelaysMs": []
+  }
+}
+```
+
+抓取失败时 `detail` 为 `null`，`attempt` 里带 `failure` / `message`。响应码仍是 200（业务失败），HTTP 500 只在浏览器 launch 崩溃等异常路径出现。
+
+`Availability` 枚举：`in-stock` / `out-of-stock` / `pre-order` / `backorder` / `unavailable` / `unknown`。
+
 ## 前端功能
 
 - **关键字输入**：回车或点"立即抓取"
@@ -198,6 +275,7 @@ amazon-scraper/
 - **点击排序**：点击表头按价格或评分排序
 - **星级展示**：5 星可视化 + 阿拉伯数字
 - **跳转链接**：直接打开 Amazon 商品页
+- **按需详情**：每行"详情"按钮 → 模态框展示 Buy Box / 评论直方图 / 变体 / 图片画廊 / 特性 / 技术参数 / 描述 / 面包屑（Phase 3）
 - **CSV 导出**：带 UTF-8 BOM 的 CSV（Excel 友好）
 
 ## 工作原理
@@ -263,7 +341,7 @@ CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 �
 
 - [x] **Phase 1** — 工程化重构（TS + 模块拆分 + 测试 + Docker + CI）
 - [x] **Phase 2** — 抓取稳定性（Retry / Proxy Pool / stealth / CAPTCHA 多维探测与降级；Marketplace 按用户要求保持 `com` 单站）
-- [ ] **Phase 3** — 商品详情（Detail Scraper + Parser，扩展 Listing schema 到 Buy Box / 卖家 / 运费 / 变体 / 评论数）
+- [x] **Phase 3** — 商品详情（`POST /api/detail` 按需触发 + Detail Parser/Scraper + 前端模态框；Buy Box / 评论 / 变体 / 描述 / 图片 / 参数全字段）
 - [ ] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch，node-cron 调度 Job，前端历史曲线）
 
 ## 常见问题
@@ -291,6 +369,9 @@ Amazon 的搜索结果里大量"即将推出"或第三方预售商品没有标�
 
 **Q：TypeScript 报"Cannot find module './xxx'"？**
 ESM + `NodeNext` 要求所有相对 import 带 `.js` 扩展名（即使源文件是 `.ts`）。这是 Node 的规则，不是 tsc 的。
+
+**Q：详情页抓取慢 / 失败？**
+详情页按需触发（点击"详情"按钮），单次 5-10 秒属正常（浏览器启动 + goto + 反爬探测 + Parser）。默认间隔 `DETAIL_INTERVAL_MS=5000` 比搜索页保守，因为 Amazon 对 `/dp/` 保护更强。失败时模态框会展示 `failure`（`network` / `timeout` / `captcha` / `parser-miss` / `unknown`）、`message`、`retryCount`；命中 CAPTCHA 时按 AGENTS.md 抓取伦理**不换代理**、直接终止。
 
 ## License
 

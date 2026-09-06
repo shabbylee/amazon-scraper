@@ -39,6 +39,7 @@ Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改
 | 单元测试 | `npm test`（vitest run）/ `npm run test:watch` |
 | 健康检查 | `curl http://localhost:3456/api/health` |
 | 抓取一次 | `curl -X POST http://localhost:3456/api/scrape -H 'content-type: application/json' -d '{"keyword":"laptop","pages":1}'` |
+| 抓单个详情 | `curl -X POST http://localhost:3456/api/detail -H 'content-type: application/json' -d '{"asin":"B09S3HNMHF"}'` |
 | Docker 构建 | `docker build -t amazon-scraper:local .` |
 | Docker 运行 | `docker compose up --build`（映射 3456） |
 
