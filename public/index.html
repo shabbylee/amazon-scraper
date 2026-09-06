@@ -552,13 +552,13 @@ function sortItems(items) {
   const arr = [...items];
   const { key, dir } = sortState;
   if (key === 'price') {
-    arr.sort((a, b) => (a.priceNum || Infinity) * dir - (b.priceNum || Infinity) * dir);
+    arr.sort((a, b) => (a.priceNum ?? Infinity) * dir - (b.priceNum ?? Infinity) * dir);
   } else if (key === 'rating') {
-    arr.sort((a, b) => (b.rating ?? 0) * dir - (a.rating ?? 0) * dir);
+    arr.sort((a, b) => ((b.rating ?? 0) - (a.rating ?? 0)) * dir);
   } else if (key === 'name') {
     arr.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN') * dir);
   } else if (key === 'none') {
-    arr.sort((a, b) => (a.priceNum || Infinity) - (b.priceNum || Infinity));
+    arr.sort((a, b) => (a.priceNum ?? Infinity) - (b.priceNum ?? Infinity));
   }
   return arr;
 }
