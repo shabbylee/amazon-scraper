@@ -517,15 +517,15 @@ function renderStats(data) {
     </div>
     <div class="stat-card">
       <div class="label">最低</div>
-      <div class="value green">${data.minPrice || '—'}</div>
+      <div class="value green">${esc(data.minPrice || '—')}</div>
     </div>
     <div class="stat-card">
       <div class="label">最高</div>
-      <div class="value amber">${data.maxPrice || '—'}</div>
+      <div class="value amber">${esc(data.maxPrice || '—')}</div>
     </div>
     <div class="stat-card">
       <div class="label">平均</div>
-      <div class="value">${data.avgPrice || '—'}</div>
+      <div class="value">${esc(data.avgPrice || '—')}</div>
     </div>
   `;
 }
@@ -584,24 +584,24 @@ function renderTable() {
   tbodyEl.innerHTML = items.map((x, i) => `
     <tr>
       <td class="col-img">
-        ${x.image ? `<img src="${x.image}" alt="" loading="lazy" onerror="this.style.opacity=.4"/>` : ''}
+        ${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy" onerror="this.style.opacity=.4"/>` : ''}
       </td>
       <td class="col-title">
-        <a href="${x.href}" target="_blank" rel="noopener" title="${x.title}">${x.title || '—'}</a>
+        <a href="${esc(x.href)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title) || '—'}</a>
       </td>
       <td class="col-price">
         ${x.hasPrice
-          ? `<span class="price-num">${x.priceText}</span>`
-          : `<span class="price-na">${x.priceText}</span>`}
+          ? `<span class="price-num">${esc(x.priceText)}</span>`
+          : `<span class="price-na">${esc(x.priceText)}</span>`}
       </td>
       <td class="col-rating">
         <div class="rating-bar">${ratingStars(x.rating)}</div>
       </td>
       <td class="col-link">
-        <a href="${x.href}" target="_blank" rel="noopener">打开 →</a>
+        <a href="${esc(x.href)}" target="_blank" rel="noopener">打开 →</a>
       </td>
       <td class="col-detail">
-        <button class="detail-btn" data-asin="${x.asin}" type="button">详情</button>
+        <button class="detail-btn" data-asin="${esc(x.asin)}" type="button">详情</button>
       </td>
     </tr>
   `).join('');
