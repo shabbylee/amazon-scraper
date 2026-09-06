@@ -1,6 +1,20 @@
 import fs from 'node:fs';
-import puppeteer, { type Browser, type LaunchOptions } from 'puppeteer';
+import vanillaPuppeteer, { type Browser, type LaunchOptions } from 'puppeteer';
+import { addExtra } from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import type { ParsedProxy } from '../proxy/index.js';
+
+/**
+ * Phase 2：接入 puppeteer-extra + stealth 插件。见 docs/adr/0003-phase2-scrape-stability.md。
+ * stealth 会覆盖 navigator.webdriver / chrome.runtime / permissions.query / plugins / languages /
+ * iframe contentWindow / WebGL vendor 等十几个 Chromium 反检测点，比手写脚本更完整。
+ *
+ * 用 addExtra(vanillaPuppeteer) 显式包装（不走 puppeteer-extra 的默认导出），
+ * 避免 NodeNext + CJS interop 下 default 导入的类型歧义。
+ * `.use()` 是全局副作用，只需在模块加载时调用一次。
+ */
+const puppeteer = addExtra(vanillaPuppeteer);
+puppeteer.use(StealthPlugin());
 
 /** 系统常见 Chrome/Chromium 路径，按 macOS → Linux → Windows 顺序探测。 */
 const CHROME_PATH_CANDIDATES: readonly string[] = [
@@ -49,5 +63,6 @@ export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser
   if (opts.proxy) args.push(`--proxy-server=${opts.proxy.serverFlag}`);
   const launchOpts: LaunchOptions = { headless: opts.headless, args };
   if (opts.chromePath) launchOpts.executablePath = opts.chromePath;
-  return puppeteer.launch(launchOpts);
+  // puppeteer-extra 的 launch 与 puppeteer.launch 签名兼容；返回的 Browser 类型也一致。
+  return (await puppeteer.launch(launchOpts)) as Browser;
 }
