@@ -22,5 +22,5 @@ v1.0 是一个 207 行 `server.js` + 529 行单文件前端的"一次成型"版�
 ## 后果
 
 - Phase 1 结束前**不引入新的用户可见功能**；README 与前端在 Phase 1 只做同步更新的必要修改。
-- 每完成一个 Phase 打一个 tag（`v0.2-phase1` / `v0.3-phase2` / …），保留回退点。
+- 每完成一个 Phase 打一个 tag（`v1.1.0-phase1` / `v1.2.0-phase2` / `v1.3.0-phase3` / `v1.4.0-phase4`），保留回退点。`package.json` 的 `version` 与 tag 同步。
 - Phase 之间如果有新的架构级选择（TS 迁移、数据库选型、代理池实现、调度器实现），单独开 ADR，不塞进路线图 ADR 里。

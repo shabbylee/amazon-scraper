@@ -27,18 +27,26 @@ Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改
 | 用途 | 命令 |
 |---|---|
 | 安装依赖 | `npm install` |
-| 启动服务 | `npm start`（默认 `http://localhost:3456`） |
+| 开发（热重载） | `npm run dev`（tsx watch，默认 `http://localhost:3456`） |
+| 生产构建 | `npm run build`（`tsc -p tsconfig.build.json` → `dist/`） |
+| 生产运行 | `npm start`（`node dist/index.js`；必须先 build） |
+| 类型检查 | `npm run typecheck` |
+| 单元测试 | `npm test`（vitest run）/ `npm run test:watch` |
 | 健康检查 | `curl http://localhost:3456/api/health` |
 | 抓取一次 | `curl -X POST http://localhost:3456/api/scrape -H 'content-type: application/json' -d '{"keyword":"laptop","pages":1}'` |
+| Docker 构建 | `docker build -t amazon-scraper:local .` |
+| Docker 运行 | `docker compose up --build`（映射 3456） |
 
-Phase 1 之后会新增 `npm test` / `npm run lint` / `npm run build`；届时更新此表，不要把测试脚本散落到 README。
+CI 走 `.github/workflows/ci.yml`（Node 20 + 22 矩阵：install → typecheck → build → test → docker build）。
 
 ## 代码约定
 
-- **CommonJS**（`"type": "commonjs"`），跟首个提交保持一致；如要迁 ESM 或 TS，走 ADR。
+- **TypeScript strict + ESM**：后端源码在 `src/`，编译到 `dist/`；`"type": "module"`，`NodeNext` 模块解析，所有相对 import 必须带 `.js` 扩展名。决定与迁移代价见 `docs/adr/0002-typescript-migration.md`；再改模块系统或语言需新 ADR。
+- **Node ≥ 20**：跟 `package.json#engines` 与 Dockerfile base image 保持一致。
 - **无框架前端**：`public/index.html` 单文件，保持零依赖；如要引入构建流程，走 ADR。
-- **配置从 `.env` 读**，通过 `loadEnv()`（Phase 1 会替换为统一 `config` 模块）；不要把常量硬编码进业务代码。
-- **提交信息前缀**：`feat:` / `fix:` / `chore:` / `docs:` / `refactor:` / `test:`，跟首个提交 `feat: Amazon scraper v1.0` 一致。
+- **配置统一从 `src/config.ts` 读**：`loadConfig({ env, envFilePath })` 会把 `process.env` 覆盖到 `.env` 之上，并把 `requestIntervalMs` / `maxConcurrentAttempts` 夹紧到 AGENTS.md 硬约束。**不要**在业务代码里直接读 `process.env` 或硬编码常量。
+- **Parser 与 Scraper 严格分层**：Parser 是纯函数（DOM → 领域对象），Scraper 才碰 browser/IO/retry。跨层的类型都在 `src/types.ts`。
+- **提交信息前缀**：`feat:` / `fix:` / `chore:` / `docs:` / `refactor:` / `test:`；breaking change 用 `!` 后缀（如 `refactor!:`）并在正文写 `BREAKING CHANGE:`。
 - **不 `push` 到 `main` 除非用户明确要求**；本地 `git commit` 可以随时做。
 
 ## 边界
