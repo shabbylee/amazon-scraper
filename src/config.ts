@@ -45,6 +45,10 @@ export interface AppConfig {
   readonly maxConcurrentAttempts: number;
   /** Phase 3：详情页 Attempt 最小间隔（毫秒）。默认 5000，硬下限 2000。见 ADR-0004。 */
   readonly detailIntervalMs: number;
+  /** Phase 4：SQLite 数据库文件路径。默认 data/scraper.sqlite。 */
+  readonly dbPath: string;
+  /** Phase 4：是否启用定时调度器。默认 true。 */
+  readonly schedulerEnabled: boolean;
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -105,6 +109,8 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
       MIN_REQUEST_INTERVAL_MS,
       Number.isFinite(detailIntervalRaw) ? detailIntervalRaw : 5000
     ),
+    dbPath: read('DB_PATH')?.trim() || path.join(PROJECT_ROOT, 'data', 'scraper.sqlite'),
+    schedulerEnabled: (read('SCHEDULER_ENABLED') ?? 'true').toLowerCase() !== 'false',
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,
   };
