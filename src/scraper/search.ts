@@ -58,20 +58,69 @@ export function classifyError(err: unknown): FailureClass {
   return 'unknown';
 }
 
-/** 通过 DOM 特征判断是否为 Amazon 反爬 CAPTCHA 页面。 */
+/**
+ * Amazon CAPTCHA / Robot Check 页面的多维信号。
+ * 抽成纯数据结构，方便 detectCaptchaFromSignals 独立单测。
+ */
+export interface CaptchaSignals {
+  readonly url: string;
+  readonly title: string;
+  readonly hasValidateCaptchaForm: boolean;
+  readonly hasCaptchaImage: boolean;
+  readonly hasRobotCheckHeading: boolean;
+  readonly hasSupportEmailMarker: boolean;
+}
+
+/**
+ * 纯逻辑：任一信号命中即认为是 CAPTCHA 页。
+ * Amazon 的反爬页面在不同 Marketplace / 不同时期会换特征，多维探测比单点稳。
+ */
+export function detectCaptchaFromSignals(s: CaptchaSignals): boolean {
+  if (s.url.includes('/errors/validateCaptcha')) return true;
+  const t = s.title.toLowerCase();
+  if (t.includes('captcha') || t.includes('robot')) return true;
+  // Amazon 实际 CAPTCHA 页的常见标题文案："Enter the characters you see below"
+  if (t.includes('characters you see')) return true;
+  if (s.hasValidateCaptchaForm) return true;
+  if (s.hasCaptchaImage) return true;
+  if (s.hasRobotCheckHeading) return true;
+  if (s.hasSupportEmailMarker) return true;
+  return false;
+}
+
+/** 在浏览器上下文里收集 CaptchaSignals；失败（页面还没加载完 / evaluate 抛错）视为非 CAPTCHA。 */
 export async function isCaptchaPage(page: Page): Promise<boolean> {
   try {
-    return await page.evaluate(() => {
-      const title = document.title.toLowerCase();
-      if (title.includes('captcha') || title.includes('robot')) return true;
-      const form = document.querySelector('form[action*="validateCaptcha"]');
-      if (form) return true;
-      const img = document.querySelector('img[src*="captcha"]');
-      return Boolean(img);
+    const signals = await page.evaluate(() => {
+      const headings = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+      const hasRobotCheckHeading = headings.some((el) =>
+        /robot\s*check/i.test(el.textContent ?? '')
+      );
+      const bodyText = document.body ? document.body.innerText ?? '' : '';
+      return {
+        url: window.location.href,
+        title: document.title,
+        hasValidateCaptchaForm: Boolean(
+          document.querySelector('form[action*="validateCaptcha"]')
+        ),
+        hasCaptchaImage: Boolean(document.querySelector('img[src*="captcha"]')),
+        hasRobotCheckHeading,
+        hasSupportEmailMarker: bodyText.includes('api-services-support@amazon.com'),
+      };
     });
+    return detectCaptchaFromSignals(signals);
   } catch {
     return false;
   }
+}
+
+/** HTTP 响应状态 → FailureClass 的补充映射（goto 成功但状态码异常时用）。 */
+export function classifyHttpStatus(status: number): FailureClass | null {
+  if (status === 429 || status === 503) return 'network';
+  if (status >= 500) return 'network';
+  if (status === 403) return 'unknown';
+  if (status >= 400) return 'unknown';
+  return null;
 }
 
 export interface ScrapePageDeps {
@@ -113,7 +162,19 @@ export async function scrapeSearchPage(
       Accept:
         'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     });
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: navigateTimeout });
+    const response = await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: navigateTimeout,
+    });
+    const status = response?.status() ?? 0;
+    const statusFailure = status > 0 ? classifyHttpStatus(status) : null;
+    if (statusFailure) {
+      return {
+        listings: [],
+        failure: statusFailure,
+        message: `HTTP ${status} from ${url}`,
+      };
+    }
 
     if (await isCaptchaPage(page)) {
       return { listings: [], failure: 'captcha', message: 'Amazon 返回验证码页面' };
