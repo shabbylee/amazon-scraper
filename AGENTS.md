@@ -10,7 +10,11 @@
 - **一件事一个目录**。每个 feature 对应 `.scratch/<feature-slug>/`，规格是 `spec.md`，实现工单是 `issues/NN-<slug>.md`，约定见 `docs/agents/issue-tracker.md`。
 - **动手前先分诊**。用 `/triage` 过一遍，标签见 `docs/agents/triage-labels.md`；分诊状态写在条目顶部的 `Status:` 行。
 - **决策要落 ADR**。四阶段路线图、TS 迁移、数据库选型、代理池实现、Marketplace 注册表这类"难以回退 + 未来读者会问为什么"的选择写进 `docs/adr/NNNN-<slug>.md`，格式见 `docs/agents/domain.md`。
-- **Parser 与 Scraper 严格分层**。Parser 只做 DOM → 领域对象，纯函数、无 IO、可单测；Scraper 才碰浏览器、重试、代理。新加代码前先问自己"这段属于哪层"。
+- **Parser / Scraper / Proxy 三层严格分离**：
+  - **Parser**（`src/parser/`）只做 DOM → 领域对象，纯函数、无 IO、可单测
+  - **Scraper**（`src/scraper/`）编排 Browser + Retry + Parser + Proxy 完成 Attempt，负责失败分类
+  - **Proxy**（`src/proxy/`）只做端点管理（分配 / 冷却 / 归还），不碰浏览器、不解析 DOM
+  - 新加代码前先问自己"这段属于哪层"；跨层的类型统一放 `src/types.ts`
 
 ## 抓取伦理与边界
 
@@ -18,9 +22,10 @@ Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改
 
 - **匿名访问**：不登录、不持久化 Cookie、不携带用户凭证。
 - **限速**：同一 Marketplace 相邻 Attempt 至少间隔 2 秒；并发 Attempt ≤ 2。
-- **尊重 CAPTCHA**：识别到验证码页面即归类为 `captcha` 失败态并停止重试该 Job，不打码、不切账号。
+- **尊重 CAPTCHA**：识别到验证码页面即归类为 `captcha` 失败态并停止重试该 Job，**不换代理、不打码、不切账号**。
 - **真实 UA + 合理 Header**：使用主流浏览器 UA，不伪装 Amazon 官方客户端。
-- **失败要分类**：`network` / `timeout` / `captcha` / `parser-miss` / `unknown`，只有前两类可以自动重试。
+- **失败要分类**：`network` / `timeout` / `captcha` / `parser-miss` / `unknown`；只有前两类可以自动重试（最多 3 次，指数退避 1s → 2s → 4s）。
+- **代理只做端点管理**：Proxy Pool 负责分配 / 冷却 / 归还，不做任何反爬绕过；命中 CAPTCHA 时不把当前代理标记为失败（那不是代理的锅）。
 
 ## 命令
 

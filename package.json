@@ -1,6 +1,6 @@
 {
   "name": "amazon-scraper",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Amazon 商品价格抓取器 — 输入关键字，一键抓取商品、价格、评分，按表格展示并支持 CSV 导出",
   "main": "dist/index.js",
   "type": "module",
