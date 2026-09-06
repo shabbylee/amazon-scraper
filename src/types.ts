@@ -61,6 +61,10 @@ export interface AttemptSummary {
   readonly listingCount: number;
   readonly failure?: FailureClass;
   readonly message?: string;
+  /** Phase 2：这次 Attempt 内部重试了几次（0 = 一次就成功或一次就不可重试）。 */
+  readonly retryCount?: number;
+  /** Phase 2：每次重试前的退避毫秒数，长度 = retryCount。 */
+  readonly retryDelaysMs?: readonly number[];
 }
 
 export interface ScrapeResult {

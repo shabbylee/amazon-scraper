@@ -12,6 +12,7 @@ import {
   type ScrapeJob,
   type ScrapeResult,
 } from '../types.js';
+import { withRetry, type RetryPolicy } from './retry.js';
 
 /**
  * Scraper 层：编排 Browser + Parser + Retry + Proxy 完成一次 Scrape Attempt。
@@ -144,14 +145,16 @@ export interface RunSearchJobDeps {
   readonly browser: Browser;
   readonly requestIntervalMs: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** Phase 2：可选自定义 Retry 策略；默认走 retry.ts 的 DEFAULT_RETRY_POLICY。 */
+  readonly retryPolicy?: RetryPolicy;
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * 编排一个 Scrape Job：按页遍历，每次 Attempt 之间 sleep(requestIntervalMs)。
- * 遇到 CAPTCHA 立即停止后续页（AGENTS.md 硬约束）。
+ * 编排一个 Scrape Job：按页遍历，每页的 scrapeSearchPage 走 withRetry（按 FailureClass 分类），
+ * 相邻 Attempt 之间 sleep(requestIntervalMs)。遇到 CAPTCHA 立即停止后续页（AGENTS.md 硬约束）。
  */
 export async function runSearchJob(
   job: ScrapeJob,
@@ -164,11 +167,16 @@ export async function runSearchJob(
 
   for (let pageNum = 1; pageNum <= job.pages; pageNum += 1) {
     const startedAt = Date.now();
-    const outcome = await scrapeSearchPage(job.keyword, pageNum, {
-      browser: deps.browser,
-      marketplace,
-    });
+    const { result: outcome, attempts: tryCount, delaysMs } = await withRetry(
+      () =>
+        scrapeSearchPage(job.keyword, pageNum, {
+          browser: deps.browser,
+          marketplace,
+        }),
+      { policy: deps.retryPolicy, sleep }
+    );
     const durationMs = Date.now() - startedAt;
+    const retryCount = tryCount - 1;
 
     if (outcome.failure) {
       attempts.push({
@@ -178,6 +186,8 @@ export async function runSearchJob(
         listingCount: 0,
         failure: outcome.failure,
         message: outcome.message,
+        retryCount,
+        retryDelaysMs: delaysMs,
       });
       if (outcome.failure === 'captcha') break;
     } else {
@@ -186,6 +196,8 @@ export async function runSearchJob(
         ok: true,
         durationMs,
         listingCount: outcome.listings.length,
+        retryCount,
+        retryDelaysMs: delaysMs,
       });
       allListings.push(...outcome.listings);
     }
