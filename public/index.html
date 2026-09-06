@@ -416,7 +416,100 @@
     border-radius: 4px;
     font-size: 11px; color: #94a3b8;
   }
+
+  /* Phase 4：Tab bar / badge / Watch 面板 / 图表 */
+  .header-right { margin-left: auto; position: relative; }
+  .badge-count {
+    background: #ef4444; color: #fff;
+    font-size: 11px; font-weight: 700;
+    padding: 2px 7px; border-radius: 999px;
+    cursor: pointer;
+  }
+  .tab-bar {
+    display: flex; gap: 4px; margin-bottom: 20px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px; padding: 4px;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .tab-bar .tab {
+    flex: 1; padding: 9px 16px; border: none; border-radius: 8px;
+    background: transparent; color: #94a3b8;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .tab-bar .tab:hover { color: #e2e8f0; background: rgba(255,255,255,0.04); }
+  .tab-bar .tab.active { background: rgba(255,153,0,0.15); color: #ffb84d; }
+
+  .watch-create {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 14px; padding: 18px;
+  }
+  .watch-form {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  }
+  .watch-form input[type="text"], .watch-form select {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #fff; padding: 9px 12px; border-radius: 8px;
+    font-size: 13px; outline: none;
+  }
+  .watch-form input[type="text"]:focus, .watch-form select:focus {
+    border-color: #ff9900;
+  }
+  .watch-form input#watch-keyword { flex: 2; min-width: 160px; }
+  .watch-form input#watch-webhook { flex: 3; min-width: 200px; }
+  .watch-form select { min-width: 150px; }
+  .watch-check {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; color: #94a3b8; cursor: pointer;
+  }
+  .watch-check input { accent-color: #ff9900; }
+
+  .watch-list { display: flex; flex-direction: column; gap: 8px; }
+  .watch-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 10px; padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .watch-card .info { flex: 1; min-width: 0; }
+  .watch-card .kw { font-weight: 600; font-size: 14px; color: #fff; }
+  .watch-card .meta { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+  .watch-card .actions { display: flex; gap: 6px; }
+  .watch-card .actions button {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: #cbd5e1; border-radius: 6px; padding: 5px 10px;
+    font-size: 11px; cursor: pointer;
+  }
+  .watch-card .actions button:hover { background: rgba(255,255,255,0.12); }
+  .watch-card .actions button.danger:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+  .watch-changes { display: flex; flex-direction: column; gap: 6px; }
+  .change-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; font-size: 12px;
+  }
+  .change-item .pct { font-weight: 700; min-width: 60px; }
+  .change-item .pct.down { color: #86efac; }
+  .change-item .pct.up { color: #fca5a5; }
+  .change-item .name { flex: 1; color: #cbd5e1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .change-item .prices { color: #94a3b8; }
+  .change-item .time { color: #64748b; font-size: 11px; min-width: 80px; text-align: right; }
+
+  .chart-container {
+    margin-top: 12px; padding: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    position: relative; height: 220px;
+  }
+  .chart-container canvas { width: 100% !important; height: 100% !important; }
+  .chart-empty { color: #64748b; font-size: 12px; text-align: center; padding: 40px 0; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script>
 <body>
 <div class="container">
   <header>
@@ -425,7 +518,17 @@
       <h1>Amazon 商品价格抓取器</h1>
       <div class="subtitle">输入关键字，一键抓取商品、价格、评分，按表格展示</div>
     </div>
+    <div class="header-right">
+      <span class="badge-count" id="change-badge" style="display:none;" title="最近价格变化">0</span>
+    </div>
   </header>
+
+  <nav class="tab-bar" id="tab-bar">
+    <button class="tab active" data-tab="search">搜索抓取</button>
+    <button class="tab" data-tab="watches">Watch 管理</button>
+  </nav>
+
+  <div id="panel-search">
 
   <div class="search-bar">
     <input id="keyword" type="text" placeholder="输入关键字，如 laptop、gaming laptop、MacBook..." value="laptop" />
@@ -478,6 +581,35 @@
       </table>
     </div>
   </div>
+  </div><!-- /panel-search -->
+
+  <div id="panel-watches" style="display:none;">
+    <div class="watch-create">
+      <h2 style="font-size:16px;margin:0 0 12px;">创建 Watch</h2>
+      <div class="watch-form">
+        <input id="watch-keyword" type="text" placeholder="关键字（如 laptop）" />
+        <select id="watch-cron">
+          <option value="0 9 * * 1">每周一 09:00</option>
+          <option value="0 9 * * *">每天 09:00</option>
+          <option value="0 9 1 * *">每月 1 号 09:00</option>
+          <option value="custom">自定义 cron…</option>
+        </select>
+        <input id="watch-cron-custom" type="text" placeholder="0 9 * * 1" style="display:none;" />
+        <input id="watch-webhook" type="text" placeholder="Webhook URL（可选）" />
+        <label class="watch-check"><input id="watch-notify" type="checkbox" checked /> 本地通知</label>
+        <button class="btn" id="watch-create-btn" type="button">创建</button>
+      </div>
+    </div>
+    <div class="watch-list-section">
+      <h2 style="font-size:16px;margin:18px 0 10px;">我的 Watch</h2>
+      <div id="watch-list" class="watch-list"></div>
+    </div>
+    <div class="watch-changes-section">
+      <h2 style="font-size:16px;margin:18px 0 10px;">最近价格变化</h2>
+      <div id="watch-changes" class="watch-changes"></div>
+    </div>
+  </div><!-- /panel-watches -->
+
 </div>
 
 <script>
@@ -838,11 +970,14 @@ function renderDetail(data) {
     renderBullets(d.bullets),
     renderSpecs(d.specs),
     renderDescription(d.description),
+    `<div class="detail-section"><h3>价格历史</h3><div class="chart-container" id="price-history-chart"><div class="chart-empty">加载中…</div></div></div>`,
     `<div class="attempt-note">
       抓取时间：${esc(d.capturedAt)} ·
       <a href="${esc(d.href)}" target="_blank" rel="noopener" style="color:#ffb84d;">在 Amazon 打开 →</a>
     </div>`,
   ].join('');
+  // 异步加载价格历史折线图
+  loadPriceHistory(d.asin);
 }
 
 async function fetchDetail(asin, btn) {
@@ -885,6 +1020,234 @@ tbodyEl.addEventListener('click', (e) => {
   if (!asin) return;
   fetchDetail(asin, btn);
 });
+
+/* ---------- Phase 4：Tab 切换 / Watch 管理 / 价格历史图表 / Badge ---------- */
+
+const panelSearch = document.getElementById('panel-search');
+const panelWatches = document.getElementById('panel-watches');
+const tabBar = document.getElementById('tab-bar');
+const changeBadge = document.getElementById('change-badge');
+
+tabBar.addEventListener('click', (e) => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  tabBar.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  const target = tab.dataset.tab;
+  panelSearch.style.display = target === 'search' ? '' : 'none';
+  panelWatches.style.display = target === 'watches' ? '' : 'none';
+  if (target === 'watches') { loadWatches(); loadChanges(); }
+});
+
+// Badge 点击跳到 Watch 面板
+changeBadge.addEventListener('click', () => {
+  tabBar.querySelector('[data-tab="watches"]').click();
+});
+
+// ─── Watch CRUD ───
+const watchKeywordEl = document.getElementById('watch-keyword');
+const watchCronEl = document.getElementById('watch-cron');
+const watchCronCustomEl = document.getElementById('watch-cron-custom');
+const watchWebhookEl = document.getElementById('watch-webhook');
+const watchNotifyEl = document.getElementById('watch-notify');
+const watchCreateBtn = document.getElementById('watch-create-btn');
+const watchListEl = document.getElementById('watch-list');
+const watchChangesEl = document.getElementById('watch-changes');
+
+watchCronEl.addEventListener('change', () => {
+  watchCronCustomEl.style.display = watchCronEl.value === 'custom' ? '' : 'none';
+});
+
+watchCreateBtn.addEventListener('click', async () => {
+  const keyword = watchKeywordEl.value.trim();
+  if (!keyword) { watchKeywordEl.focus(); return; }
+  const cronExpr = watchCronEl.value === 'custom'
+    ? (watchCronCustomEl.value.trim() || '0 9 * * 1')
+    : watchCronEl.value;
+  const webhookUrl = watchWebhookEl.value.trim() || null;
+  const notifyLocal = watchNotifyEl.checked;
+
+  watchCreateBtn.disabled = true;
+  try {
+    const res = await fetch('/api/watches', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ keyword, cronExpr, webhookUrl, notifyLocal }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    watchKeywordEl.value = '';
+    watchWebhookEl.value = '';
+    loadWatches();
+  } catch (err) {
+    alert('创建 Watch 失败：' + err.message);
+  } finally {
+    watchCreateBtn.disabled = false;
+  }
+});
+
+async function loadWatches() {
+  try {
+    const res = await fetch('/api/watches');
+    const data = await res.json();
+    const watches = data.watches || [];
+    if (!watches.length) {
+      watchListEl.innerHTML = '<div style="color:#64748b;font-size:13px;padding:12px;">还没有 Watch，创建一个开始监控价格变化</div>';
+      return;
+    }
+    watchListEl.innerHTML = watches.map(w => `
+      <div class="watch-card">
+        <div class="info">
+          <div class="kw">${esc(w.keyword)}</div>
+          <div class="meta">
+            ${esc(w.cron_expr)} · ${w.pages} 页 · ${w.active ? '🟢 活跃' : '⏸ 停用'}
+            ${w.last_run_at ? ' · 上次: ' + new Date(w.last_run_at).toLocaleString('zh-CN') : ' · 未执行过'}
+            ${w.webhook_url ? ' · 🔗 webhook' : ''}
+            ${w.notify_local ? ' · 🔔 本地通知' : ''}
+          </div>
+        </div>
+        <div class="actions">
+          <button data-action="run" data-id="${w.id}">立即执行</button>
+          <button data-action="delete" data-id="${w.id}" class="danger">删除</button>
+        </div>
+      </div>
+    `).join('');
+  } catch (err) {
+    watchListEl.innerHTML = `<div style="color:#fca5a5;font-size:13px;">加载失败：${esc(err.message)}</div>`;
+  }
+}
+
+watchListEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-action]');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const action = btn.dataset.action;
+  if (action === 'delete') {
+    if (!confirm('确定删除这个 Watch？关联的执行记录也会被删除。')) return;
+    await fetch(`/api/watches/${id}`, { method: 'DELETE' });
+    loadWatches();
+  } else if (action === 'run') {
+    btn.disabled = true;
+    btn.textContent = '执行中…';
+    try {
+      // 触发一次搜索并存储（复用 /api/scrape，结果会自动入 DB）
+      const watchRes = await fetch(`/api/watches/${id}`);
+      const watchData = await watchRes.json();
+      const w = watchData.watch;
+      if (w) {
+        await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ keyword: w.keyword, pages: w.pages, marketplace: w.marketplace }),
+        });
+      }
+      loadWatches();
+      loadChanges();
+    } catch (err) {
+      alert('执行失败：' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '立即执行';
+    }
+  }
+});
+
+async function loadChanges() {
+  try {
+    const res = await fetch('/api/watches/changes/recent');
+    const data = await res.json();
+    const changes = data.changes || [];
+    updateBadge(changes.length);
+    if (!changes.length) {
+      watchChangesEl.innerHTML = '<div style="color:#64748b;font-size:13px;padding:12px;">暂无价格变化记录</div>';
+      return;
+    }
+    watchChangesEl.innerHTML = changes.slice(0, 30).map(c => {
+      const pct = c.change_pct;
+      const cls = pct != null ? (pct < 0 ? 'down' : 'up') : '';
+      const pctText = pct != null ? `${pct > 0 ? '+' : ''}${pct}%` : '—';
+      return `<div class="change-item">
+        <span class="pct ${cls}">${pctText}</span>
+        <span class="name" title="${esc(c.title)}">${esc(c.title)}</span>
+        <span class="prices">${esc(c.old_price_text ?? '?')} → ${esc(c.new_price_text ?? '?')}</span>
+        <span class="time">${new Date(c.detected_at).toLocaleDateString('zh-CN')}</span>
+      </div>`;
+    }).join('');
+  } catch { /* 静默 */ }
+}
+
+function updateBadge(count) {
+  if (count > 0) {
+    changeBadge.textContent = count > 99 ? '99+' : String(count);
+    changeBadge.style.display = '';
+  } else {
+    changeBadge.style.display = 'none';
+  }
+}
+
+// 启动时加载一次 badge
+loadChanges();
+// 每 60 秒轮询一次
+setInterval(loadChanges, 60_000);
+
+// ─── 价格历史图表（详情模态框内） ───
+let historyChart = null;
+
+async function loadPriceHistory(asin) {
+  const container = document.getElementById('price-history-chart');
+  if (!container) return;
+  container.innerHTML = '<div class="chart-empty">加载价格历史…</div>';
+  try {
+    const res = await fetch(`/api/history/${asin}?limit=200`);
+    const data = await res.json();
+    const snapshots = data.snapshots || [];
+    if (snapshots.length < 2) {
+      container.innerHTML = '<div class="chart-empty">价格历史不足（至少需要 2 次抓取才能画折线图）<br/>创建 Watch 后会周期性积累数据</div>';
+      return;
+    }
+    container.innerHTML = '<canvas id="history-canvas"></canvas>';
+    const canvas = document.getElementById('history-canvas');
+    if (historyChart) { historyChart.destroy(); historyChart = null; }
+    if (typeof Chart === 'undefined') {
+      container.innerHTML = '<div class="chart-empty">Chart.js 未加载（离线环境？），降级为表格</div>';
+      return;
+    }
+    historyChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: snapshots.map(s => new Date(s.captured_at).toLocaleDateString('zh-CN')),
+        datasets: [{
+          label: '价格',
+          data: snapshots.map(s => s.price_num),
+          borderColor: '#ff9900',
+          backgroundColor: 'rgba(255,153,0,0.1)',
+          fill: true,
+          tension: 0.3,
+          pointRadius: 3,
+          pointBackgroundColor: '#ff9900',
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${snapshots[ctx.dataIndex]?.price_text ?? ctx.parsed.y}`,
+            },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#94a3b8', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+        },
+      },
+    });
+  } catch (err) {
+    container.innerHTML = `<div class="chart-empty">加载失败：${esc(err.message)}</div>`;
+  }
+}
 </script>
 
 <!-- Phase 3：商品详情模态框 -->

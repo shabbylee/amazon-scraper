@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { Browser } from 'puppeteer';
 import type { AppConfig } from '../config.js';
+import { generateJobId, insertListings, insertPriceSnapshots } from '../db/store.js';
 import type { ParsedProxy, ProxyPool } from '../proxy/index.js';
 import { launchBrowser } from '../scraper/browser.js';
 import { runSearchJob } from '../scraper/search.js';
@@ -97,6 +98,16 @@ export function scrapeHandler(config: AppConfig, proxyPool: ProxyPool): RequestH
         requestIntervalMs: config.requestIntervalMs,
         proxy,
       });
+
+      // Phase 4：持久化到 DB（手动搜索也积累价格历史）
+      const jobId = generateJobId();
+      try {
+        insertListings(result.listings, job.keyword, jobId);
+        insertPriceSnapshots(result.listings);
+      } catch (dbErr) {
+        console.warn('[scrape] DB persist failed (non-fatal):', dbErr instanceof Error ? dbErr.message : dbErr);
+      }
+
       if (proxy) await proxyPool.release(proxy, judgeProxyOutcome(result.attempts));
       res.json({
         keyword: job.keyword,
