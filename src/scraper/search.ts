@@ -3,6 +3,7 @@ import {
   extractSearchResultsInPage,
   toListings,
 } from '../parser/search-page.js';
+import type { ParsedProxy } from '../proxy/index.js';
 import {
   MARKETPLACES,
   type AttemptSummary,
@@ -78,6 +79,8 @@ export interface ScrapePageDeps {
   readonly marketplace: Marketplace;
   readonly navigateTimeoutMs?: number;
   readonly selectorTimeoutMs?: number;
+  /** Phase 2：可选代理；credentials 在 newPage 后、goto 前用 page.authenticate 应用。 */
+  readonly proxy?: ParsedProxy | null;
 }
 
 export interface ScrapePageOutcome {
@@ -98,6 +101,12 @@ export async function scrapeSearchPage(
   let page: Page | null = null;
   try {
     page = await deps.browser.newPage();
+    if (deps.proxy?.credentials) {
+      await page.authenticate({
+        username: deps.proxy.credentials.username,
+        password: deps.proxy.credentials.password,
+      });
+    }
     await page.setUserAgent(USER_AGENT);
     await page.setExtraHTTPHeaders({
       'Accept-Language': `${deps.marketplace.locale},zh;q=0.9,en;q=0.8`,
@@ -147,6 +156,8 @@ export interface RunSearchJobDeps {
   readonly sleep?: (ms: number) => Promise<void>;
   /** Phase 2：可选自定义 Retry 策略；默认走 retry.ts 的 DEFAULT_RETRY_POLICY。 */
   readonly retryPolicy?: RetryPolicy;
+  /** Phase 2：可选代理；透传给每页的 scrapeSearchPage。 */
+  readonly proxy?: ParsedProxy | null;
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
@@ -172,6 +183,7 @@ export async function runSearchJob(
         scrapeSearchPage(job.keyword, pageNum, {
           browser: deps.browser,
           marketplace,
+          proxy: deps.proxy,
         }),
       { policy: deps.retryPolicy, sleep }
     );

@@ -1,8 +1,9 @@
 import type { RequestHandler } from 'express';
 import type { AppConfig } from '../config.js';
+import type { ProxyPool } from '../proxy/index.js';
 import { detectChromePath } from '../scraper/browser.js';
 
-export function healthHandler(config: AppConfig): RequestHandler {
+export function healthHandler(config: AppConfig, proxyPool: ProxyPool): RequestHandler {
   const detected = config.chromePath ?? detectChromePath();
   return (_req, res) => {
     res.json({
@@ -13,6 +14,7 @@ export function healthHandler(config: AppConfig): RequestHandler {
       defaultMarketplace: config.defaultMarketplace,
       requestIntervalMs: config.requestIntervalMs,
       maxConcurrentAttempts: config.maxConcurrentAttempts,
+      proxyPoolSize: proxyPool.size(),
     });
   };
 }

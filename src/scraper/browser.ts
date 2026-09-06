@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import puppeteer, { type Browser, type LaunchOptions } from 'puppeteer';
+import type { ParsedProxy } from '../proxy/index.js';
 
 /** 系统常见 Chrome/Chromium 路径，按 macOS → Linux → Windows 顺序探测。 */
 const CHROME_PATH_CANDIDATES: readonly string[] = [
@@ -32,6 +33,8 @@ export function detectChromePath(env: NodeJS.ProcessEnv = process.env): string |
 export interface LaunchBrowserOptions {
   readonly chromePath: string | null;
   readonly headless: boolean;
+  /** Phase 2：可选代理；仅 serverFlag 进启动参数，credentials 由 scrapeSearchPage 走 page.authenticate。 */
+  readonly proxy?: ParsedProxy | null;
 }
 
 export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser> {
@@ -43,6 +46,7 @@ export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser
     '--disable-gpu',
     '--lang=zh-CN',
   ];
+  if (opts.proxy) args.push(`--proxy-server=${opts.proxy.serverFlag}`);
   const launchOpts: LaunchOptions = { headless: opts.headless, args };
   if (opts.chromePath) launchOpts.executablePath = opts.chromePath;
   return puppeteer.launch(launchOpts);
