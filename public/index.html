@@ -605,23 +605,24 @@ function renderTable() {
       </td>
     </tr>
   `).join('');
-
-  document.querySelectorAll('th[data-sort], th[data-sort="none"]').forEach(th => {
-    const k = th.dataset.sort;
-    if (k === 'none') return;
-    th.addEventListener('click', () => {
-      if (sortState.key === k) {
-        sortState.dir *= -1;
-      } else {
-        sortState.key = k;
-        sortState.dir = 1;
-      }
-      document.querySelectorAll('th').forEach(t => t.classList.remove('sorted'));
-      th.classList.add('sorted');
-      renderTable();
-    });
-  });
 }
+
+// 排序：事件委托绑在 thead 上，只绑一次（修 v1.0 起 renderTable 每次重绑导致 listener 指数膨胀的 bug）
+document.querySelector('#tbl thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const k = th.dataset.sort;
+  if (k === 'none') return;
+  if (sortState.key === k) {
+    sortState.dir *= -1;
+  } else {
+    sortState.key = k;
+    sortState.dir = 1;
+  }
+  document.querySelectorAll('#tbl th').forEach(t => t.classList.remove('sorted'));
+  th.classList.add('sorted');
+  renderTable();
+});
 
 function exportCSV() {
   const items = filterItems();
