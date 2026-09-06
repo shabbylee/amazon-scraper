@@ -6,3 +6,16 @@ yarn-error.log*
 .DS_Store
 *.log
 puppeteer_profile/
+
+# Phase 1 起：测试与构建产物
+coverage/
+dist/
+
+# Phase 4 起：本地数据库
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# 附件/素材（如需纳入版本管理可删除下面这行）
+.scratch/**/assets/
