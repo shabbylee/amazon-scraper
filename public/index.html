@@ -240,6 +240,182 @@
     .col-title { min-width: 140px; }
     .col-img img { width: 36px; height: 36px; }
   }
+  /* Phase 3：详情按钮与模态框 */
+  .col-detail { width: 84px; text-align: center; }
+  .detail-btn {
+    background: rgba(255,153,0,0.12);
+    color: #ffb84d;
+    border: 1px solid rgba(255,153,0,0.35);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s, opacity .15s;
+  }
+  .detail-btn:hover:not(:disabled) {
+    background: rgba(255,153,0,0.22);
+    color: #ffd08a;
+    border-color: rgba(255,153,0,0.6);
+  }
+  .detail-btn:disabled { opacity: .5; cursor: progress; }
+  .detail-btn.loading::after {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    margin-left: 6px;
+    border: 2px solid rgba(255,184,77,0.35);
+    border-top-color: #ffb84d;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(2,6,23,0.72);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+    padding: 24px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal-card {
+    background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    max-width: 900px;
+    width: 100%;
+    max-height: calc(100vh - 48px);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+  }
+  .modal-head {
+    padding: 18px 22px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .modal-head .title-block { flex: 1; min-width: 0; }
+  .modal-head h2 {
+    margin: 0 0 4px; font-size: 17px; line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+    -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .modal-head .meta {
+    font-size: 12px; color: #94a3b8;
+    display: flex; gap: 10px; flex-wrap: wrap;
+  }
+  .modal-head .meta code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px; }
+  .modal-close {
+    background: rgba(255,255,255,0.06); color: #cbd5e1;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+    width: 32px; height: 32px; font-size: 18px; cursor: pointer;
+    line-height: 1; padding: 0;
+    flex-shrink: 0;
+  }
+  .modal-close:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .modal-body {
+    padding: 18px 22px 22px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .modal-body .state {
+    padding: 40px 20px; text-align: center; color: #94a3b8; font-size: 14px;
+  }
+  .modal-body .state.error { color: #fca5a5; }
+  .modal-body .state .spinner {
+    margin: 0 auto 12px;
+    width: 26px; height: 26px;
+    border: 3px solid rgba(255,153,0,0.2);
+    border-top-color: #ff9900;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  .detail-section { margin-bottom: 22px; }
+  .detail-section:last-child { margin-bottom: 0; }
+  .detail-section h3 {
+    margin: 0 0 10px; font-size: 12px; letter-spacing: 0.8px;
+    text-transform: uppercase; color: #94a3b8; font-weight: 700;
+  }
+  .breadcrumbs { color: #94a3b8; font-size: 12px; margin-bottom: 12px; }
+  .breadcrumbs span + span::before { content: ' › '; margin: 0 4px; color: #475569; }
+  .buybox-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;
+  }
+  .buybox-cell {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .buybox-cell .k { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+  .buybox-cell .v { font-size: 14px; color: #fff; font-weight: 600; }
+  .buybox-cell .v.price { color: #ff9900; font-size: 18px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+    background: rgba(255,255,255,0.08); color: #cbd5e1;
+  }
+  .badge.prime { background: rgba(59,130,246,0.18); color: #93c5fd; }
+  .badge.in-stock { background: rgba(34,197,94,0.18); color: #86efac; }
+  .badge.out-of-stock, .badge.unavailable { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  .badge.pre-order, .badge.backorder { background: rgba(234,179,8,0.18); color: #fde047; }
+  .hist-row {
+    display: grid; grid-template-columns: 40px 1fr 44px; gap: 10px;
+    align-items: center; margin-bottom: 4px; font-size: 12px;
+  }
+  .hist-bar {
+    height: 8px; background: rgba(255,255,255,0.06);
+    border-radius: 4px; overflow: hidden;
+  }
+  .hist-bar > div {
+    height: 100%; background: linear-gradient(90deg, #ff9900, #ffb84d);
+    border-radius: 4px;
+  }
+  .variant-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .variant-chip {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 4px 10px; font-size: 12px; color: #cbd5e1;
+  }
+  .variant-chip.current {
+    border-color: rgba(255,153,0,0.5); color: #ffb84d;
+    background: rgba(255,153,0,0.1);
+  }
+  .gallery { display: flex; flex-wrap: wrap; gap: 6px; }
+  .gallery img {
+    width: 60px; height: 60px; object-fit: contain;
+    background: #fff; border-radius: 6px; padding: 3px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .bullets { padding-left: 20px; margin: 0; }
+  .bullets li { margin-bottom: 4px; color: #cbd5e1; }
+  .specs-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .specs-table th, .specs-table td {
+    text-align: left; padding: 6px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .specs-table th {
+    color: #94a3b8; font-weight: 500; width: 30%;
+    background: rgba(255,255,255,0.02);
+  }
+  .specs-table td { color: #e2e8f0; }
+  .description { color: #cbd5e1; white-space: pre-wrap; }
+  .attempt-note {
+    margin-top: 16px; padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border-left: 2px solid rgba(255,153,0,0.4);
+    border-radius: 4px;
+    font-size: 11px; color: #94a3b8;
+  }
 </style>
 <body>
 <div class="container">
@@ -295,6 +471,7 @@
             <th class="col-price" data-sort="price">价格 <span class="arrow">↕</span></th>
             <th class="col-rating" data-sort="rating">评分 <span class="arrow">↕</span></th>
             <th class="col-link">链接</th>
+            <th class="col-detail">详情</th>
           </tr>
         </thead>
         <tbody id="tbody"></tbody>
@@ -423,6 +600,9 @@ function renderTable() {
       <td class="col-link">
         <a href="${x.href}" target="_blank" rel="noopener">打开 →</a>
       </td>
+      <td class="col-detail">
+        <button class="detail-btn" data-asin="${x.asin}" type="button">详情</button>
+      </td>
     </tr>
   `).join('');
 
@@ -524,6 +704,200 @@ async function go() {
 
 goBtn.addEventListener('click', go);
 keywordEl.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+
+/* ---------- Phase 3：商品详情按需抓取 ---------- */
+
+const modalBackdrop = document.getElementById('detail-modal');
+const modalTitle = document.getElementById('detail-title');
+const modalMeta = document.getElementById('detail-meta');
+const modalBody = document.getElementById('detail-body');
+const modalCloseBtn = document.getElementById('detail-close');
+
+let activeDetailBtn = null;
+
+function openModal() { modalBackdrop.classList.add('open'); }
+function closeModal() {
+  modalBackdrop.classList.remove('open');
+  if (activeDetailBtn) {
+    activeDetailBtn.classList.remove('loading');
+    activeDetailBtn.disabled = false;
+    activeDetailBtn = null;
+  }
+}
+modalCloseBtn.addEventListener('click', closeModal);
+modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && modalBackdrop.classList.contains('open')) closeModal();
+});
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function renderBuyBox(bb) {
+  if (!bb) return '';
+  const cells = [];
+  cells.push(`<div class="buybox-cell"><div class="k">Buy Box 价格</div><div class="v price">${esc(bb.priceText ?? '—')}</div></div>`);
+  cells.push(`<div class="buybox-cell"><div class="k">运费 / 配送</div><div class="v" style="font-size:12px;font-weight:400;">${esc(bb.shippingText ?? '—')}</div></div>`);
+  cells.push(`<div class="buybox-cell"><div class="k">卖家</div><div class="v" style="font-size:12px;font-weight:400;">${esc(bb.sellerName ?? '—')}</div></div>`);
+  const badges = [];
+  if (bb.isPrime) badges.push('<span class="badge prime">Prime</span>');
+  badges.push(`<span class="badge ${esc(bb.availability)}">${esc(bb.availability)}</span>`);
+  cells.push(`<div class="buybox-cell"><div class="k">状态</div><div class="v" style="display:flex;gap:6px;flex-wrap:wrap;">${badges.join('')}</div></div>`);
+  return `<div class="detail-section"><h3>Buy Box</h3><div class="buybox-grid">${cells.join('')}</div></div>`;
+}
+
+function renderReviews(r) {
+  if (!r) return '';
+  const head = `
+    <div style="display:flex;gap:16px;align-items:baseline;margin-bottom:10px;">
+      <div style="font-size:22px;color:#ff9900;font-weight:700;">${r.averageRating != null ? r.averageRating.toFixed(1) : '—'}</div>
+      <div style="color:#94a3b8;font-size:12px;">${r.totalCount != null ? r.totalCount.toLocaleString() + ' 条评论' : '暂无评论数据'}</div>
+    </div>`;
+  const rows = [5,4,3,2,1].map(star => {
+    const pct = r.breakdown?.['star' + star];
+    const width = pct != null ? Math.max(0, Math.min(100, pct)) : 0;
+    return `<div class="hist-row">
+      <div>${star} 星</div>
+      <div class="hist-bar"><div style="width:${width}%"></div></div>
+      <div style="text-align:right;color:#94a3b8;">${pct != null ? pct + '%' : '—'}</div>
+    </div>`;
+  }).join('');
+  return `<div class="detail-section"><h3>评论统计</h3>${head}${rows}</div>`;
+}
+
+function renderVariants(variants) {
+  if (!variants || !variants.length) return '';
+  const chips = variants.map(v => {
+    const label = v.label || v.asin;
+    const dims = Object.entries(v.dimensions || {}).map(([k,val]) => `${esc(k)}: ${esc(val)}`).join(' / ');
+    const title = dims ? `${esc(label)} — ${dims}` : esc(label);
+    return `<span class="variant-chip ${v.isCurrent ? 'current' : ''}" title="${title}">${esc(label)}${v.isCurrent ? ' ●' : ''}</span>`;
+  }).join('');
+  return `<div class="detail-section"><h3>变体 (${variants.length})</h3><div class="variant-chips">${chips}</div></div>`;
+}
+
+function renderGallery(images) {
+  if (!images || !images.length) return '';
+  const imgs = images.slice(0, 12).map(src => `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.style.opacity=.3"/>`).join('');
+  return `<div class="detail-section"><h3>图片画廊 (${images.length})</h3><div class="gallery">${imgs}</div></div>`;
+}
+
+function renderBullets(bullets) {
+  if (!bullets || !bullets.length) return '';
+  const lis = bullets.map(b => `<li>${esc(b)}</li>`).join('');
+  return `<div class="detail-section"><h3>特性</h3><ul class="bullets">${lis}</ul></div>`;
+}
+
+function renderSpecs(specs) {
+  if (!specs || !specs.length) return '';
+  const rows = specs.map(s => `<tr><th>${esc(s.key)}</th><td>${esc(s.value)}</td></tr>`).join('');
+  return `<div class="detail-section"><h3>技术参数</h3><table class="specs-table">${rows}</table></div>`;
+}
+
+function renderDescription(desc) {
+  if (!desc) return '';
+  return `<div class="detail-section"><h3>描述</h3><div class="description">${esc(desc)}</div></div>`;
+}
+
+function renderBreadcrumbs(crumbs) {
+  if (!crumbs || !crumbs.length) return '';
+  return `<div class="breadcrumbs">${crumbs.map(c => `<span>${esc(c)}</span>`).join('')}</div>`;
+}
+
+function renderDetail(data) {
+  const d = data.detail;
+  const a = data.attempt || {};
+  if (!d) {
+    modalBody.innerHTML = `<div class="state error">
+      <div style="font-size:32px;opacity:.5;margin-bottom:8px;">⚠️</div>
+      <div>详情抓取失败${a.failure ? `：${esc(a.failure)}` : ''}</div>
+      ${a.message ? `<div class="hint" style="margin-top:6px;color:#94a3b8;font-size:12px;">${esc(a.message)}</div>` : ''}
+      ${a.retryCount ? `<div class="hint" style="margin-top:4px;color:#94a3b8;font-size:11px;">已重试 ${a.retryCount} 次（退避 ${esc((a.retryDelaysMs||[]).join(' + '))}ms）</div>` : ''}
+    </div>`;
+    return;
+  }
+  const metaParts = [
+    `ASIN <code>${esc(d.asin)}</code>`,
+    d.brand ? `品牌 <code>${esc(d.brand)}</code>` : '',
+    `Marketplace <code>${esc(d.marketplace)}</code>`,
+    data.proxyUsed ? `代理 <code>${esc(data.proxyUsed)}</code>` : '',
+    a.durationMs != null ? `耗时 <code>${a.durationMs}ms</code>` : '',
+    a.retryCount ? `重试 <code>${a.retryCount}</code>` : '',
+  ].filter(Boolean).join(' · ');
+  modalMeta.innerHTML = metaParts;
+  modalBody.innerHTML = [
+    renderBreadcrumbs(d.breadcrumbs),
+    renderBuyBox(d.buyBox),
+    renderReviews(d.reviews),
+    renderVariants(d.variants),
+    renderGallery(d.images),
+    renderBullets(d.bullets),
+    renderSpecs(d.specs),
+    renderDescription(d.description),
+    `<div class="attempt-note">
+      抓取时间：${esc(d.capturedAt)} ·
+      <a href="${esc(d.href)}" target="_blank" rel="noopener" style="color:#ffb84d;">在 Amazon 打开 →</a>
+    </div>`,
+  ].join('');
+}
+
+async function fetchDetail(asin, btn) {
+  activeDetailBtn = btn;
+  btn.classList.add('loading');
+  btn.disabled = true;
+  modalTitle.textContent = '加载商品详情…';
+  modalMeta.innerHTML = `ASIN <code>${esc(asin)}</code>`;
+  modalBody.innerHTML = `<div class="state"><div class="spinner"></div><div>正在打开 Amazon 详情页并解析…</div><div class="hint" style="margin-top:8px;color:#94a3b8;font-size:12px;">首次抓取约 5-10 秒（含浏览器启动 + 反爬探测）</div></div>`;
+  openModal();
+  try {
+    const res = await fetch('/api/detail', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ asin }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    modalTitle.textContent = data.detail?.title || `商品 ${asin}`;
+    renderDetail(data);
+  } catch (err) {
+    modalTitle.textContent = `商品 ${asin}`;
+    modalBody.innerHTML = `<div class="state error">
+      <div style="font-size:32px;opacity:.5;margin-bottom:8px;">⚠️</div>
+      <div>请求失败</div>
+      <div class="hint" style="margin-top:6px;color:#94a3b8;font-size:12px;">${esc(err.message)}</div>
+    </div>`;
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+    activeDetailBtn = null;
+  }
+}
+
+// 事件委托：一次绑定，renderTable 重绘后仍然生效
+tbodyEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.detail-btn');
+  if (!btn || btn.disabled) return;
+  const asin = btn.dataset.asin;
+  if (!asin) return;
+  fetchDetail(asin, btn);
+});
 </script>
+
+<!-- Phase 3：商品详情模态框 -->
+<div class="modal-backdrop" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div class="title-block">
+        <h2 id="detail-title">商品详情</h2>
+        <div class="meta" id="detail-meta"></div>
+      </div>
+      <button class="modal-close" id="detail-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body" id="detail-body"></div>
+  </div>
+</div>
 </body>
 </html>
