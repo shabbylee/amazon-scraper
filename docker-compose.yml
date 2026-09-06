@@ -1,0 +1,16 @@
+services:
+  scraper:
+    build: .
+    image: amazon-scraper:local
+    ports:
+      - "3456:3456"
+    environment:
+      HEADLESS: "true"
+      DEFAULT_MARKETPLACE: "com"
+      REQUEST_INTERVAL_MS: "2000"
+      MAX_CONCURRENT_ATTEMPTS: "1"
+    restart: unless-stopped
+    # 如果要挂 .env 覆盖上面的 environment，取消下面注释：
+    # env_file:
+    #   - path: .env
+    #     required: false
