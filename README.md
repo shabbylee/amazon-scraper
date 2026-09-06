@@ -342,7 +342,7 @@ CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 �
 - [x] **Phase 1** — 工程化重构（TS + 模块拆分 + 测试 + Docker + CI）
 - [x] **Phase 2** — 抓取稳定性（Retry / Proxy Pool / stealth / CAPTCHA 多维探测与降级；Marketplace 按用户要求保持 `com` 单站）
 - [x] **Phase 3** — 商品详情（`POST /api/detail` 按需触发 + Detail Parser/Scraper + 前端模态框；Buy Box / 评论 / 变体 / 描述 / 图片 / 参数全字段）
-- [ ] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch，node-cron 调度 Job，前端历史曲线）
+- [x] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch；node-cron 每周调度；三路 Alert：Webhook + 本地通知 + 前端 badge；Chart.js 价格历史折线图）
 
 ## 常见问题
 
