@@ -3,6 +3,7 @@ import {
   extractSearchResultsInPage,
   toListings,
 } from '../parser/search-page.js';
+import { applyStealth } from './stealth.js';
 import {
   MARKETPLACES,
   type AttemptSummary,
@@ -103,6 +104,7 @@ export async function scrapeSearchPage(
       Accept:
         'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     });
+    await applyStealth(page);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: navigateTimeout });
 
     if (await isCaptchaPage(page)) {
