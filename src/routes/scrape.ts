@@ -74,6 +74,8 @@ export function scrapeHandler(config: AppConfig): RequestHandler {
       const result = await runSearchJob(job, {
         browser,
         requestIntervalMs: config.requestIntervalMs,
+        retryMaxAttempts: config.retryMaxAttempts,
+        retryBackoffMs: config.retryBackoffMs,
       });
       res.json({
         keyword: job.keyword,

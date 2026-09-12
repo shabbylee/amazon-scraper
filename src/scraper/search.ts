@@ -143,15 +143,38 @@ export async function scrapeSearchPage(
 export interface RunSearchJobDeps {
   readonly browser: Browser;
   readonly requestIntervalMs: number;
+  readonly retryMaxAttempts: number;
+  readonly retryBackoffMs: number;
   readonly sleep?: (ms: number) => Promise<void>;
+  /** 注入单页抓取函数便于测试；默认走真实 scrapeSearchPage。 */
+  readonly scrapePage?: ScrapePageFn;
 }
+
+export type ScrapePageFn = (
+  keyword: string,
+  pageNum: number,
+  deps: ScrapePageDeps
+) => Promise<ScrapePageOutcome>;
 
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** 只有 network / timeout 允许自动重试（AGENTS.md 抓取伦理硬约束）。 */
+export function isRetryable(failure: FailureClass): boolean {
+  return failure === 'network' || failure === 'timeout';
+}
+
+/** 是否还要再试一次：可重试分类 + 未超过页内 Attempt 上限。 */
+export function shouldRetry(failure: FailureClass, attempt: number, maxAttempts: number): boolean {
+  return isRetryable(failure) && attempt < maxAttempts;
+}
+
 /**
- * 编排一个 Scrape Job：按页遍历，每次 Attempt 之间 sleep(requestIntervalMs)。
- * 遇到 CAPTCHA 立即停止后续页（AGENTS.md 硬约束）。
+ * 编排一个 Scrape Job：按页遍历，每页最多 retryMaxAttempts 次 Attempt。
+ * - network / timeout：退避 retryBackoffMs 后重试（限速夹紧在 config）
+ * - captcha：立即停止整个 Job（AGENTS.md 硬约束，不重试）
+ * - parser-miss / unknown：该页不再重试，继续下一页
+ * - 页与页之间 sleep(requestIntervalMs)
  */
 export async function runSearchJob(
   job: ScrapeJob,
@@ -159,19 +182,37 @@ export async function runSearchJob(
 ): Promise<ScrapeResult> {
   const marketplace = MARKETPLACES[job.marketplace];
   const sleep = deps.sleep ?? defaultSleep;
+  const scrapePage = deps.scrapePage ?? scrapeSearchPage;
   const allListings: Listing[] = [];
   const attempts: AttemptSummary[] = [];
 
   for (let pageNum = 1; pageNum <= job.pages; pageNum += 1) {
-    const startedAt = Date.now();
-    const outcome = await scrapeSearchPage(job.keyword, pageNum, {
-      browser: deps.browser,
-      marketplace,
-    });
-    const durationMs = Date.now() - startedAt;
+    let pageListings: readonly Listing[] = [];
+    let pageSucceeded = false;
 
-    if (outcome.failure) {
+    for (let attempt = 1; attempt <= deps.retryMaxAttempts; attempt += 1) {
+      const startedAt = Date.now();
+      const outcome = await scrapePage(job.keyword, pageNum, {
+        browser: deps.browser,
+        marketplace,
+      });
+      const durationMs = Date.now() - startedAt;
+
+      if (!outcome.failure) {
+        attempts.push({
+          attempt,
+          page: pageNum,
+          ok: true,
+          durationMs,
+          listingCount: outcome.listings.length,
+        });
+        pageListings = outcome.listings;
+        pageSucceeded = true;
+        break;
+      }
+
       attempts.push({
+        attempt,
         page: pageNum,
         ok: false,
         durationMs,
@@ -179,17 +220,19 @@ export async function runSearchJob(
         failure: outcome.failure,
         message: outcome.message,
       });
-      if (outcome.failure === 'captcha') break;
-    } else {
-      attempts.push({
-        page: pageNum,
-        ok: true,
-        durationMs,
-        listingCount: outcome.listings.length,
-      });
-      allListings.push(...outcome.listings);
+
+      // captcha：硬约束，立即终止整个 Job，不再碰后续页
+      if (outcome.failure === 'captcha') return { job, listings: allListings, attempts };
+
+      // 可重试分类且未超上限 → 退避后重试；否则该页结束
+      if (shouldRetry(outcome.failure, attempt, deps.retryMaxAttempts)) {
+        await sleep(deps.retryBackoffMs);
+        continue;
+      }
+      break;
     }
 
+    if (pageSucceeded) allListings.push(...pageListings);
     if (pageNum < job.pages) await sleep(deps.requestIntervalMs);
   }
 

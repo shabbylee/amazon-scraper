@@ -55,6 +55,8 @@ export interface ScrapeJob {
 }
 
 export interface AttemptSummary {
+  /** 第几次物理 Attempt（1 起）。同一 page 可能因重试出现多条。 */
+  readonly attempt: number;
   readonly page: number;
   readonly ok: boolean;
   readonly durationMs: number;

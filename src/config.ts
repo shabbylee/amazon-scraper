@@ -35,6 +35,10 @@ export function parseEnvFile(content: string): Record<string, string> {
 export const MIN_REQUEST_INTERVAL_MS = 2000;
 /** AGENTS.md 硬约束：并发 Attempt ≤ 2。 */
 export const MAX_CONCURRENT_ATTEMPTS = 2;
+/** AGENTS.md 抓取伦理：network/timeout 是唯一可自动重试的 Failure Class，重试次数上限 5。 */
+export const MAX_RETRY_ATTEMPTS = 5;
+/** 重试退避同样受限速约束：与相邻 Attempt 一样 ≥ 2 秒。 */
+export const MIN_RETRY_BACKOFF_MS = MIN_REQUEST_INTERVAL_MS;
 
 export interface AppConfig {
   readonly port: number;
@@ -43,6 +47,8 @@ export interface AppConfig {
   readonly defaultMarketplace: MarketplaceId;
   readonly requestIntervalMs: number;
   readonly maxConcurrentAttempts: number;
+  readonly retryMaxAttempts: number;
+  readonly retryBackoffMs: number;
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -84,6 +90,8 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
 
   const intervalRaw = Number.parseInt(read('REQUEST_INTERVAL_MS') ?? '2000', 10);
   const concurrencyRaw = Number.parseInt(read('MAX_CONCURRENT_ATTEMPTS') ?? '1', 10);
+  const retryMaxAttemptsRaw = Number.parseInt(read('RETRY_MAX_ATTEMPTS') ?? '3', 10);
+  const retryBackoffRaw = Number.parseInt(read('RETRY_BACKOFF_MS') ?? '3000', 10);
 
   return {
     port,
@@ -97,6 +105,14 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     maxConcurrentAttempts: Math.min(
       MAX_CONCURRENT_ATTEMPTS,
       Math.max(1, Number.isFinite(concurrencyRaw) ? concurrencyRaw : 1)
+    ),
+    retryMaxAttempts: Math.min(
+      MAX_RETRY_ATTEMPTS,
+      Math.max(1, Number.isFinite(retryMaxAttemptsRaw) ? retryMaxAttemptsRaw : 1)
+    ),
+    retryBackoffMs: Math.max(
+      MIN_RETRY_BACKOFF_MS,
+      Number.isFinite(retryBackoffRaw) ? retryBackoffRaw : MIN_RETRY_BACKOFF_MS
     ),
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,

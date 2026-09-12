@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MIN_REQUEST_INTERVAL_MS, MAX_CONCURRENT_ATTEMPTS, loadConfig, parseEnvFile } from './config.js';
+import {
+  MIN_REQUEST_INTERVAL_MS,
+  MAX_CONCURRENT_ATTEMPTS,
+  MAX_RETRY_ATTEMPTS,
+  MIN_RETRY_BACKOFF_MS,
+  loadConfig,
+  parseEnvFile,
+} from './config.js';
 
 describe('parseEnvFile', () => {
   it('parses KEY=VALUE lines, ignores comments and blanks', () => {
@@ -50,6 +57,23 @@ describe('loadConfig', () => {
   it('clamps maxConcurrentAttempts to the AGENTS.md hard ceiling of 2', () => {
     const c = loadConfig(opts({ MAX_CONCURRENT_ATTEMPTS: '99' }));
     expect(c.maxConcurrentAttempts).toBe(MAX_CONCURRENT_ATTEMPTS);
+  });
+
+  it('defaults retry to 3 attempts and 3000ms backoff, clamped to hard bounds', () => {
+    const c = loadConfig(opts({}));
+    expect(c.retryMaxAttempts).toBe(3);
+    expect(c.retryBackoffMs).toBe(3000);
+  });
+
+  it('clamps retryMaxAttempts into [1, 5]', () => {
+    expect(loadConfig(opts({ RETRY_MAX_ATTEMPTS: '99' })).retryMaxAttempts).toBe(MAX_RETRY_ATTEMPTS);
+    expect(loadConfig(opts({ RETRY_MAX_ATTEMPTS: '0' })).retryMaxAttempts).toBe(1);
+    expect(loadConfig(opts({ RETRY_MAX_ATTEMPTS: '2' })).retryMaxAttempts).toBe(2);
+  });
+
+  it('clamps retryBackoffMs up to the AGENTS.md hard floor of 2000ms', () => {
+    expect(loadConfig(opts({ RETRY_BACKOFF_MS: '100' })).retryBackoffMs).toBe(MIN_RETRY_BACKOFF_MS);
+    expect(loadConfig(opts({ RETRY_BACKOFF_MS: '5000' })).retryBackoffMs).toBe(5000);
   });
 
   it('rejects an unsupported DEFAULT_MARKETPLACE with a helpful error', () => {
