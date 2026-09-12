@@ -115,18 +115,23 @@ export function extractProductDetailInPage(): unknown {
       if (t && !bullets.includes(t)) bullets.push(t);
     });
 
-  // 技术参数表（两种常见布局）
+  // 技术参数表（多种布局：新版 prodDetTable / a-keyvalue，旧版 techSpec section，detailBullets）
   const specs: { key: string; value: string }[] = [];
+  const seenSpecKeys = new Set<string>();
+  const pushSpec = (k: string, v: string) => {
+    if (!k || !v) return;
+    if (seenSpecKeys.has(k)) return;
+    seenSpecKeys.add(k);
+    specs.push({ key: k, value: v });
+  };
   document
     .querySelectorAll(
-      '#productDetails_techSpec_section_1 tr, #productDetails_techSpec_section_2 tr, #productDetails_detailBullets_sections1 tr'
+      '.prodDetTable tr, table.a-keyvalue tr, #productDetails_techSpec_section_1 tr, #productDetails_techSpec_section_2 tr, #productDetails_detailBullets_sections1 tr'
     )
     .forEach((tr) => {
       const th = tr.querySelector('th');
       const td = tr.querySelector('td');
-      const k = text(th);
-      const v = text(td);
-      if (k && v) specs.push({ key: k, value: v });
+      pushSpec(text(th), text(td));
     });
   document
     .querySelectorAll('#detailBullets_feature_div li, #detailBulletsWrapper_feature_div li')
@@ -136,7 +141,7 @@ export function extractProductDetailInPage(): unknown {
       const label = text(labelEl).replace(/[:：\s]+$/, '');
       if (label && raw.startsWith(label)) {
         const value = raw.slice(label.length).replace(/^[:：\s]+/, '').trim();
-        if (value) specs.push({ key: label, value });
+        pushSpec(label, value);
       }
     });
 
@@ -183,17 +188,34 @@ export function extractProductDetailInPage(): unknown {
     '#averageCustomerReviews .a-icon-alt',
   ]);
   const breakdown: { star: number; pct: number }[] = [];
-  document.querySelectorAll('#histogramTable tr, #cm_cr_dp_hist tr').forEach((tr) => {
-    const label = attr(tr.querySelector('th, td.aok-nowrap'), 'aria-label') ?? text(tr.querySelector('th, td'));
-    const pctText =
-      attr(tr.querySelector('td:last-child, .a-text-right'), 'aria-label') ??
-      text(tr.querySelector('.a-text-right, td:last-child'));
-    const starMatch = label.match(/([1-5])\s*star/i);
-    const pctMatch = pctText.match(/(\d+(?:\.\d+)?)\s*%/);
-    if (starMatch?.[1] && pctMatch?.[1]) {
-      breakdown.push({ star: Number.parseInt(starMatch[1], 10), pct: Number.parseFloat(pctMatch[1]) });
-    }
-  });
+  // 新布局：<ul id="histogramTable"> → <li> → <a aria-label="70 percent of reviews have 5 stars">
+  document
+    .querySelectorAll('#histogramTable a[aria-label], #cm_cr_dp_hist a[aria-label]')
+    .forEach((a) => {
+      const label = attr(a, 'aria-label') ?? '';
+      const m = label.match(/(\d+(?:\.\d+)?)\s*percent of reviews have\s*([1-5])\s*star/i);
+      if (m?.[1] && m?.[2]) {
+        breakdown.push({ star: Number.parseInt(m[2], 10), pct: Number.parseFloat(m[1]) });
+      }
+    });
+  // 旧布局 fallback：<table> 行，th/td 带 aria-label 或百分比文本
+  if (breakdown.length === 0) {
+    document.querySelectorAll('#histogramTable tr, #cm_cr_dp_hist tr').forEach((tr) => {
+      const label =
+        attr(tr.querySelector('th, td.aok-nowrap'), 'aria-label') ?? text(tr.querySelector('th, td'));
+      const pctText =
+        attr(tr.querySelector('td:last-child, .a-text-right'), 'aria-label') ??
+        text(tr.querySelector('.a-text-right, td:last-child'));
+      const starMatch = label.match(/([1-5])\s*star/i);
+      const pctMatch = pctText.match(/(\d+(?:\.\d+)?)\s*%/);
+      if (starMatch?.[1] && pctMatch?.[1]) {
+        breakdown.push({
+          star: Number.parseInt(starMatch[1], 10),
+          pct: Number.parseFloat(pctMatch[1]),
+        });
+      }
+    });
+  }
 
   const reviews = {
     reviewsCountRaw,
