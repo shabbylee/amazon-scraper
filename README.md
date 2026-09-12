@@ -52,9 +52,12 @@ docker compose up --build
 | `PORT` | `3456` | 服务端口 |
 | `HEADLESS` | `true` | `false` = 弹出可见 Chrome 窗口（排查反爬用） |
 | `CHROME_PATH` | 自动探测 | 手动指定 Chrome 可执行文件路径 |
-| `DEFAULT_MARKETPLACE` | `com` | 默认 Amazon 站点；Phase 2 会扩展 `cojp` / `de` / `cn` / `couk` |
+| `DEFAULT_MARKETPLACE` | `com` | 默认 Amazon 站点，支持 `com` / `cojp` / `de` / `cn` / `couk` |
 | `REQUEST_INTERVAL_MS` | `2000` | 相邻 Attempt 最小间隔（毫秒）。**硬下限 2000**，配低了会被夹紧 |
 | `MAX_CONCURRENT_ATTEMPTS` | `1` | 并发 Attempt 上限。**硬上限 2**，配高了会被夹紧 |
+| `RETRY_MAX_ATTEMPTS` | `3` | 单页最多物理 Attempt 次数（1 = 不重试）。夹紧 [1,5]；只有 network/timeout 会重试 |
+| `RETRY_BACKOFF_MS` | `3000` | 可重试失败后的退避（毫秒）。**硬下限 2000**，配低了会被夹紧 |
+| `PROXIES` | 空 | 逗号分隔的代理 URL，按 Job 轮换（ADR-0003）。留空 = 直连 |
 
 后两个硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。
 
@@ -77,9 +80,11 @@ amazon-scraper/
 ├── docs/
 │   ├── adr/
 │   │   ├── 0001-four-phase-roadmap.md
-│   │   └── 0002-typescript-migration.md
+│   │   ├── 0002-typescript-migration.md
+│   │   ├── 0003-proxy-pool.md
+│   │   └── 0004-marketplace-registry.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
-├── .scratch/                 # 本地 issue tracker（feature-slug/spec.md + issues/NN-*.md）
+├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests）
 ├── src/
 │   ├── index.ts              # 入口：loadConfig → createApp → listen + graceful shutdown
 │   ├── app.ts                # createApp 工厂（可脱离 listen 单测）
@@ -89,12 +94,15 @@ amazon-scraper/
 │   │   ├── health.ts         # GET /api/health
 │   │   └── scrape.ts         # POST /api/scrape
 │   ├── scraper/
-│   │   ├── browser.ts        # detectChromePath + launchBrowser
-│   │   └── search.ts         # buildSearchUrl / classifyError / isCaptchaPage / scrapeSearchPage / runSearchJob
+│   │   ├── browser.ts        # detectChromePath + launchBrowser（支持 --proxy-server）
+│   │   ├── proxy.ts          # ProxyPool 接口 + Static/Noop + createProxyPool（ADR-0003）
+│   │   ├── stealth.ts        # 轻量反自动化指纹（零依赖）
+│   │   └── search.ts         # buildSearchUrl / classifyError / isCaptchaPage / scrapeSearchPage / runSearchJob（含重试）
 │   └── parser/
-│       └── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 toListings（类型守卫）
+│       └── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 parsePriceNum / toListings
 ├── tests/
-│   └── api.test.ts           # supertest 集成测试
+│   ├── api.test.ts           # supertest 集成测试（health / 入参校验）
+│   └── scrape-api.test.ts    # /api/scrape mock 集成测试（不启动真实 Chrome）
 └── public/
     └── index.html            # 前端（零依赖单文件）
 ```
@@ -111,7 +119,10 @@ amazon-scraper/
   "headless": true,
   "defaultMarketplace": "com",
   "requestIntervalMs": 2000,
-  "maxConcurrentAttempts": 1
+  "maxConcurrentAttempts": 1,
+  "retryMaxAttempts": 3,
+  "retryBackoffMs": 3000,
+  "proxyPoolSize": 0
 }
 ```
 
@@ -131,7 +142,7 @@ amazon-scraper/
 |---|---|---|
 | `keyword` | string | **必填**，搜索关键字 |
 | `pages` | number | 抓取页数，夹紧到 `[1, 10]`，默认 3 |
-| `marketplace` | string | 可选，默认走 `DEFAULT_MARKETPLACE`；Phase 1 只支持 `com` |
+| `marketplace` | string | 可选，默认走 `DEFAULT_MARKETPLACE`；支持 `com` / `cojp` / `de` / `cn` / `couk` |
 
 响应：
 
@@ -140,6 +151,7 @@ amazon-scraper/
   "keyword": "laptop",
   "marketplace": "com",
   "pagesScraped": 3,
+  "proxy": null,
   "total": 48,
   "withPrice": 12,
   "withoutPrice": 36,
@@ -160,32 +172,33 @@ amazon-scraper/
     }
   ],
   "attempts": [
-    { "page": 1, "ok": true, "durationMs": 4123, "listingCount": 16 },
-    { "page": 2, "ok": true, "durationMs": 3870, "listingCount": 16 },
-    { "page": 3, "ok": false, "durationMs": 210, "listingCount": 0, "failure": "captcha", "message": "Amazon 返回验证码页面" }
+    { "attempt": 1, "page": 1, "ok": true, "durationMs": 4123, "listingCount": 16 },
+    { "attempt": 1, "page": 2, "ok": true, "durationMs": 3870, "listingCount": 16 },
+    { "attempt": 1, "page": 3, "ok": false, "durationMs": 210, "listingCount": 0, "failure": "captcha", "message": "Amazon 返回验证码页面" }
   ]
 }
 ```
 
-`attempts` 是 Phase 1 新加的：每页一条，含成败、耗时、失败分类。遇到 `captcha` 会立即停止后续页（AGENTS.md 硬约束），已抓到的页仍然返回。
+`attempts` 记录每次物理 Attempt：同一 `page` 可能因重试出现多条，`attempt` 是页内序号（1 起）。遇到 `captcha` 会立即停止后续页（AGENTS.md 硬约束），已抓到的页仍然返回。`proxy` 是本次 Job 使用的代理 label（未配置为 `null`）。
 
 失败分类枚举（`FailureClass`）：
 
-- `network` — DNS/连接/导航失败，可自动重试（Phase 2 会加）
-- `timeout` — 页面加载超时，可自动重试
+- `network` — DNS/连接/导航失败，**自动重试**（退避 `RETRY_BACKOFF_MS`，上限 `RETRY_MAX_ATTEMPTS`）
+- `timeout` — 页面加载超时，自动重试
 - `captcha` — 反爬验证页，**不重试**，直接终止该 Job
-- `parser-miss` — 页面拿到了但没解析到 Listing（Amazon 改了 DOM 结构？空搜索结果？）
+- `parser-miss` — 页面拿到了但没解析到 Listing（Amazon 改了 DOM 结构？空搜索结果？），该页不重试、继续下一页
 - `unknown` — 兜底
 
 ## 前端功能
 
 - **关键字输入**：回车或点"立即抓取"
+- **站点选择**：com / cojp / de / cn / couk
 - **页数选择**：1 / 2 / 3 / 5 / 10 页
-- **统计卡片**：总数、页数、有/无价格数、最低/最高/平均价格
+- **统计卡片**：总数、站点、页数、有/无价格数、最低/最高/平均价格
 - **筛选**：全部 / 有价格 / 无价格
 - **点击排序**：点击表头按价格或评分排序
 - **星级展示**：5 星可视化 + 阿拉伯数字
-- **跳转链接**：直接打开 Amazon 商品页
+- **跳转链接**：直接打开对应站点的 Amazon 商品页
 - **CSV 导出**：带 UTF-8 BOM 的 CSV（Excel 友好）
 
 ## 工作原理
@@ -195,17 +208,20 @@ amazon-scraper/
 │  浏览器   │ ────────────────────────▶ │  Express (app.ts)│
 │  前端页面 │                           │  → scrapeHandler │
 └──────────┘                           └────────┬────────┘
-                                                │
+                                                │  (取一个代理，ADR-0003)
                                                 ▼
                                     ┌───────────────────────┐
                                     │ runSearchJob          │
                                     │  ├─ launchBrowser     │
                                     │  ├─ 遍历 pages 1..N   │
-                                    │  │   ├─ scrapeSearchPage
-                                    │  │   │   ├─ goto
-                                    │  │   │   ├─ isCaptchaPage
-                                    │  │   │   └─ evaluate(extractSearchResultsInPage)
-                                    │  │   └─ toListings (类型守卫)
+                                    │  │   └─ 页内 Attempt 循环（≤RETRY_MAX_ATTEMPTS）
+                                    │  │       ├─ scrapeSearchPage
+                                    │  │       │   ├─ applyStealth
+                                    │  │       │   ├─ goto
+                                    │  │       │   ├─ isCaptchaPage
+                                    │  │       │   └─ evaluate(extractSearchResultsInPage)
+                                    │  │       ├─ toListings (类型守卫)
+                                    │  │       └─ network/timeout → 退避重试；captcha → 终止 Job
                                     │  └─ sleep(interval)   │
                                     └────────┬──────────────┘
                                              ▼
@@ -213,7 +229,7 @@ amazon-scraper/
                                      (含 attempts 明细)
 ```
 
-Parser 与 Scraper 严格分层：Parser 是纯函数（DOM → 领域对象），可单测；Scraper 才碰 browser/IO/失败分类。
+Parser 与 Scraper 严格分层：Parser 是纯函数（DOM → 领域对象，价格解析按站点本地化），可单测；Scraper 才碰 browser/IO/失败分类/重试/代理/stealth。
 
 ## 开发命令
 
@@ -223,7 +239,7 @@ Parser 与 Scraper 严格分层：Parser 是纯函数（DOM → 领域对象）�
 | `npm run build` | tsc → `dist/` |
 | `npm start` | 跑 `dist/index.js` |
 | `npm run typecheck` | 只跑 tsc --noEmit |
-| `npm test` | vitest run（parser / config / route validation / API） |
+| `npm test` | vitest run（parser / config / proxy / stealth / search / API，含 mock 集成） |
 | `npm run test:watch` | vitest 交互模式 |
 
 CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 矩阵的 install → typecheck → build → test，最后 docker build 一次。
@@ -233,14 +249,14 @@ CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 �
 见 [`docs/adr/0001-four-phase-roadmap.md`](docs/adr/0001-four-phase-roadmap.md)。当前状态：
 
 - [x] **Phase 1** — 工程化重构（TS + 模块拆分 + 测试 + Docker + CI）
-- [ ] **Phase 2** — 抓取稳定性（Retry / Proxy Pool / stealth / 多 Marketplace / CAPTCHA 降级）
+- [x] **Phase 2** — 抓取稳定性（Retry / Proxy Pool / stealth / 多 Marketplace / /api/scrape 集成测试）
 - [ ] **Phase 3** — 商品详情（Detail Scraper + Parser，扩展 Listing schema 到 Buy Box / 卖家 / 运费 / 变体 / 评论数）
 - [ ] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch，node-cron 调度 Job，前端历史曲线）
 
 ## 常见问题
 
 **Q：抓不到数据 / 503 / attempts 里全是 `captcha`？**
-Amazon 的 CloudFront 偶尔会升级反爬。多试几次；把 `HEADLESS=false` 用可见窗口看看是不是要求人机验证。Phase 2 会加 Proxy Pool 与自动降级。
+Amazon 的 CloudFront 偶尔会升级反爬。`network` / `timeout` 现在会自动重试（最多 `RETRY_MAX_ATTEMPTS` 次）；`captcha` 仍按硬约束立即终止，多试几次或把 `HEADLESS=false` 用可见窗口看看是不是要求人机验证。可配置 `PROXIES` 换出口 IP（ADR-0003）。
 
 **Q：Chrome 路径找不到？**
 不填也能用，会自动尝试系统里安装的 Chrome。也可以在 `.env` 里指定 `CHROME_PATH=...`。Docker 镜像已经预装 Debian chromium。
