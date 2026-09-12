@@ -12,6 +12,7 @@ import {
   isRetryable,
   runSearchJob,
   shouldRetry,
+  type ScrapePageDeps,
   type ScrapePageFn,
   type ScrapePageOutcome,
 } from './search.js';
@@ -211,5 +212,65 @@ describe('runSearchJob (retry orchestration)', () => {
     expect(result.attempts[2]?.failure).toBe('timeout');
     expect(result.attempts[3]?.ok).toBe(true);
     expect(result.listings.map((l) => l.asin)).toEqual(['B0LATER01']);
+  });
+
+  it('uses a fresh browser per attempt when browserFactory is provided, closing each one', async () => {
+    const sleeps: number[] = [];
+    const sleep = async (ms: number) => { sleeps.push(ms); };
+    const scrapePage: ScrapePageFn = vi
+      .fn()
+      .mockResolvedValueOnce(makeOutcome({ listings: [], failure: 'network', message: 'down' }))
+      .mockResolvedValueOnce(makeOutcome({ listings: [okListing('B0ROTATE01')] }))
+      .mockResolvedValueOnce(makeOutcome({ listings: [okListing('B0ROTATE02')] }));
+
+    const closed: Browser[] = [];
+    const browserFactory = vi.fn(async (): Promise<Browser> => fakeBrowser);
+    const closeBrowser = vi.fn(async (b: Browser) => { closed.push(b); });
+
+    const result = await runSearchJob(
+      { ...job, pages: 2 },
+      {
+        browserFactory,
+        closeBrowser,
+        requestIntervalMs: 2000,
+        retryMaxAttempts: 3,
+        retryBackoffMs: 2000,
+        sleep,
+        scrapePage,
+      }
+    );
+
+    // 3 次物理 Attempt → 3 个新浏览器，全部关闭
+    expect(browserFactory).toHaveBeenCalledTimes(3);
+    expect(closeBrowser).toHaveBeenCalledTimes(3);
+    expect(closed).toHaveLength(3);
+    expect(result.attempts).toHaveLength(3);
+    expect(result.attempts[0]).toMatchObject({ attempt: 1, ok: false, failure: 'network' });
+    expect(result.attempts[1]).toMatchObject({ attempt: 2, ok: true });
+    expect(result.listings.map((l) => l.asin)).toEqual(['B0ROTATE01', 'B0ROTATE02']);
+    // 退避 + 页间间隔
+    expect(sleeps).toEqual([2000, 2000]);
+  });
+
+  it('forwards the proxy to scrapePage on the shared-browser path', async () => {
+    const scrapePage = vi.fn(
+      async (_keyword: string, _pageNum: number, _deps: ScrapePageDeps) =>
+        makeOutcome({ listings: [okListing('B0PROXY01')] })
+    );
+    const proxy = { url: 'http://user:secret@proxy.example:3128', label: 'proxy.example' };
+
+    await runSearchJob(job, {
+      browser: fakeBrowser,
+      proxy,
+      requestIntervalMs: 2000,
+      retryMaxAttempts: 1,
+      retryBackoffMs: 2000,
+      sleep: noop,
+      scrapePage,
+    });
+
+    expect(scrapePage).toHaveBeenCalledTimes(2);
+    const firstDeps = scrapePage.mock.calls[0]?.[2];
+    expect(firstDeps?.proxy).toEqual(proxy);
   });
 });

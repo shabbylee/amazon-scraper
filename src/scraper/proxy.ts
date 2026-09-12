@@ -8,10 +8,26 @@ export interface Proxy {
   readonly label: string;
 }
 
+export interface ProxyCredentials {
+  readonly username: string;
+  readonly password: string;
+}
+
 export interface ProxyPool {
   readonly size: number;
   /** 取下一个代理；返回 null = 直连（没有可用代理）。 */
   next(): Promise<Proxy | null>;
+}
+
+/** 从代理 URL 里解析 userinfo（http://user:pass@host:port）；无凭证返回 null。 */
+export function parseProxyCredentials(url: string): ProxyCredentials | null {
+  try {
+    const u = new URL(url);
+    if (!u.username) return null;
+    return { username: decodeURIComponent(u.username), password: decodeURIComponent(u.password ?? '') };
+  } catch {
+    return null;
+  }
 }
 
 /** 空池：永远返回 null（直连），避免上层判空逻辑。 */

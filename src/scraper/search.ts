@@ -3,6 +3,8 @@ import {
   extractSearchResultsInPage,
   toListings,
 } from '../parser/search-page.js';
+import { applyProxyAuth } from './proxy-auth.js';
+import type { Proxy } from './proxy.js';
 import { applyStealth } from './stealth.js';
 import {
   MARKETPLACES,
@@ -76,6 +78,8 @@ export async function isCaptchaPage(page: Page): Promise<boolean> {
 export interface ScrapePageDeps {
   readonly browser: Browser;
   readonly marketplace: Marketplace;
+  /** 本次 Attempt 使用的代理；带凭证时页面会注入 Proxy-Authorization。 */
+  readonly proxy?: Proxy | null;
   readonly navigateTimeoutMs?: number;
   readonly selectorTimeoutMs?: number;
 }
@@ -105,6 +109,7 @@ export async function scrapeSearchPage(
         'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     });
     await applyStealth(page);
+    if (deps.proxy) await applyProxyAuth(page, deps.proxy);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: navigateTimeout });
 
     if (await isCaptchaPage(page)) {
@@ -143,7 +148,16 @@ export async function scrapeSearchPage(
 }
 
 export interface RunSearchJobDeps {
-  readonly browser: Browser;
+  /** 共享浏览器（默认路径：Job 内所有 Attempt 复用）。browser 与 browserFactory 至少提供一个。 */
+  readonly browser?: Browser;
+  /**
+   * 每 Attempt 新浏览器（ADR-0003 收尾：多代理时每 Attempt 换代理）。
+   * 提供后，每个 Attempt 都调用它获取新 Browser（可带下一个代理），用完即关。
+   */
+  readonly browserFactory?: () => Promise<Browser>;
+  readonly closeBrowser?: (browser: Browser) => Promise<void>;
+  /** 本次 Job 使用的代理（共享浏览器路径下传给它；每 Attempt 路径由 factory 自取）。 */
+  readonly proxy?: Proxy | null;
   readonly requestIntervalMs: number;
   readonly retryMaxAttempts: number;
   readonly retryBackoffMs: number;
@@ -185,6 +199,7 @@ export async function runSearchJob(
   const marketplace = MARKETPLACES[job.marketplace];
   const sleep = deps.sleep ?? defaultSleep;
   const scrapePage = deps.scrapePage ?? scrapeSearchPage;
+  const closeBrowser = deps.closeBrowser ?? ((b: Browser) => b.close());
   const allListings: Listing[] = [];
   const attempts: AttemptSummary[] = [];
 
@@ -194,10 +209,30 @@ export async function runSearchJob(
 
     for (let attempt = 1; attempt <= deps.retryMaxAttempts; attempt += 1) {
       const startedAt = Date.now();
-      const outcome = await scrapePage(job.keyword, pageNum, {
-        browser: deps.browser,
-        marketplace,
-      });
+      let perAttemptBrowser: Browser;
+      if (deps.browserFactory) {
+        perAttemptBrowser = await deps.browserFactory();
+      } else if (deps.browser) {
+        perAttemptBrowser = deps.browser;
+      } else {
+        throw new Error('runSearchJob requires browser or browserFactory');
+      }
+      let outcome: ScrapePageOutcome;
+      try {
+        outcome = await scrapePage(job.keyword, pageNum, {
+          browser: perAttemptBrowser,
+          marketplace,
+          proxy: deps.proxy ?? null,
+        });
+      } finally {
+        if (deps.browserFactory) {
+          try {
+            await closeBrowser(perAttemptBrowser);
+          } catch {
+            // 关闭是清理动作，失败不影响 Job 结果
+          }
+        }
+      }
       const durationMs = Date.now() - startedAt;
 
       if (!outcome.failure) {

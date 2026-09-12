@@ -57,7 +57,7 @@ docker compose up --build
 | `MAX_CONCURRENT_ATTEMPTS` | `1` | 并发 Attempt 上限。**硬上限 2**，配高了会被夹紧 |
 | `RETRY_MAX_ATTEMPTS` | `3` | 单页最多物理 Attempt 次数（1 = 不重试）。夹紧 [1,5]；只有 network/timeout 会重试 |
 | `RETRY_BACKOFF_MS` | `3000` | 可重试失败后的退避（毫秒）。**硬下限 2000**，配低了会被夹紧 |
-| `PROXIES` | 空 | 逗号分隔的代理 URL，按 Job 轮换（ADR-0003）。留空 = 直连 |
+| `PROXIES` | 空 | 逗号分隔的代理 URL，支持 `http://user:pass@host:port` 认证。1 个 = 按 Job 轮换；≥2 个自动升级为每 Attempt 轮换（ADR-0003）。留空 = 直连 |
 
 后两个硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。
 
@@ -217,6 +217,7 @@ amazon-scraper/
                                     │  │   └─ 页内 Attempt 循环（≤RETRY_MAX_ATTEMPTS）
                                     │  │       ├─ scrapeSearchPage
                                     │  │       │   ├─ applyStealth
+                                    │  │       │   ├─ applyProxyAuth（代理带凭证时）
                                     │  │       │   ├─ goto
                                     │  │       │   ├─ isCaptchaPage
                                     │  │       │   └─ evaluate(extractSearchResultsInPage)

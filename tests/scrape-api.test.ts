@@ -24,10 +24,19 @@ function makePage(opts: {
   gotoFailTimes?: number;
 } = {}) {
   let gotoCalls = 0;
+  const sessionCalls: string[] = [];
+  const session = {
+    send: async (method: string) => {
+      sessionCalls.push(method);
+      return {};
+    },
+    on: async () => {},
+  };
   return {
     setUserAgent: async () => {},
     setExtraHTTPHeaders: async () => {},
     evaluateOnNewDocument: async () => {},
+    createCDPSession: async () => session,
     goto: async () => {
       gotoCalls += 1;
       if (opts.gotoFailTimes && gotoCalls <= opts.gotoFailTimes) {
@@ -42,6 +51,7 @@ function makePage(opts: {
       return null;
     },
     close: async () => {},
+    __sessionCalls: sessionCalls,
   };
 }
 
@@ -63,7 +73,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
     const page = makePage({
       rawItems: [rawItem('B0MOCK0001', '$10.00'), rawItem('B0MOCK0002', '$20.00')],
     });
-    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page } as never);
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
     const config = loadConfig({
       env: { HEADLESS: 'true' },
@@ -92,7 +102,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
 
   it('stops the job immediately on captcha and reports the failure class', async () => {
     const page = makePage({ rawItems: [], captcha: true });
-    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page } as never);
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
     const config = loadConfig({
       env: { HEADLESS: 'true' },
@@ -115,7 +125,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       rawItems: [rawItem('B0MOCK0003', '$30.00')],
       gotoFailTimes: 1, // 第一页第一次 goto 抛 network 错误，重试后成功
     });
-    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page } as never);
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
     const config = loadConfig({
       env: { HEADLESS: 'true', RETRY_BACKOFF_MS: '2000' },
@@ -136,7 +146,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
 
   it('picks a proxy per job and reports its label', async () => {
     const page = makePage({ rawItems: [rawItem('B0MOCK0004', '$40.00')] });
-    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page } as never);
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
     const config = loadConfig({
       env: { HEADLESS: 'true', PROXIES: 'http://proxy.example:8080' },
@@ -153,5 +163,50 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
     expect(mockLaunchBrowser.mock.calls[0]?.[0]).toMatchObject({
       proxy: 'http://proxy.example:8080',
     });
+  });
+
+  it('rotates proxy per attempt when more than one proxy is configured', async () => {
+    const page = makePage({ rawItems: [rawItem('B0MOCK0005', '$50.00')] });
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
+
+    const config = loadConfig({
+      env: { HEADLESS: 'true', PROXIES: 'http://a.example:8080,http://b.example:8080' },
+      envFilePath: '/nonexistent/.env',
+    });
+    const app = createApp(config);
+
+    const res = await request(app)
+      .post('/api/scrape')
+      .send({ keyword: 'laptop', pages: 2, marketplace: 'com' })
+      .expect(200);
+
+    expect(res.body.proxy).toBe('rotating:2');
+    // 每 Attempt 一个新浏览器：2 页 → 2 次 launch，代理 a → b 轮换
+    expect(mockLaunchBrowser).toHaveBeenCalledTimes(2);
+    expect(mockLaunchBrowser.mock.calls[0]?.[0]).toMatchObject({ proxy: 'http://a.example:8080' });
+    expect(mockLaunchBrowser.mock.calls[1]?.[0]).toMatchObject({ proxy: 'http://b.example:8080' });
+    expect(res.body.total).toBe(2);
+  });
+
+  it('injects proxy auth via CDP when the proxy URL carries credentials', async () => {
+    const page = makePage({ rawItems: [rawItem('B0MOCK0006', '$60.00')] });
+    mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
+
+    const config = loadConfig({
+      env: {
+        HEADLESS: 'true',
+        PROXIES: 'http://user:secret@proxy.example:3128',
+      },
+      envFilePath: '/nonexistent/.env',
+    });
+    const app = createApp(config);
+
+    const res = await request(app)
+      .post('/api/scrape')
+      .send({ keyword: 'laptop', pages: 1, marketplace: 'com' })
+      .expect(200);
+
+    expect(res.body.proxy).toBe('proxy.example');
+    expect(page.__sessionCalls).toContain('Fetch.enable'); // 代理认证已挂上
   });
 });
