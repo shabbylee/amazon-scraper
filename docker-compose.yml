@@ -9,6 +9,8 @@ services:
       DEFAULT_MARKETPLACE: "com"
       REQUEST_INTERVAL_MS: "2000"
       MAX_CONCURRENT_ATTEMPTS: "1"
+    volumes:
+      - ./data:/app/data   # SQLite 持久化（ADR-0006）
     restart: unless-stopped
     # 如果要挂 .env 覆盖上面的 environment，取消下面注释：
     # env_file:

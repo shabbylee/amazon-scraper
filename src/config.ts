@@ -51,6 +51,8 @@ export interface AppConfig {
   readonly retryBackoffMs: number;
   /** 逗号分隔的代理 URL 列表（ADR-0003）；空 = 直连。 */
   readonly proxies: readonly string[];
+  /** SQLite 数据库文件路径（ADR-0006）；默认 <projectRoot>/data/amazon.db。 */
+  readonly dbPath: string;
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -100,6 +102,11 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
+  const dbPathRaw = read('DB_PATH')?.trim();
+  const dbPath = dbPathRaw && dbPathRaw.length > 0
+    ? dbPathRaw
+    : path.join(PROJECT_ROOT, 'data', 'amazon.db');
+
   return {
     port,
     headless,
@@ -122,6 +129,7 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
       Number.isFinite(retryBackoffRaw) ? retryBackoffRaw : MIN_RETRY_BACKOFF_MS
     ),
     proxies,
+    dbPath,
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,
   };

@@ -266,6 +266,28 @@
   .detail-grid .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
   .detail-variants { margin-top: 12px; color: var(--muted); }
   .detail-error { color: var(--red); }
+
+  /* ---- Watch 面板（Phase 4）---- */
+  .watch-panel {
+    margin-top: 18px; padding: 14px 16px; border-radius: 14px;
+    background: var(--card); border: 1px solid var(--border);
+  }
+  .watch-head { font-size: 14px; font-weight: 600; }
+  .watch-form { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .watch-form input { flex: 1 1 160px; min-width: 0; }
+  .watch-list { font-size: 12.5px; }
+  .watch-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 10px; border-radius: 8px; background: var(--bg); margin-top: 6px;
+  }
+  .watch-row .w-kw { font-weight: 600; }
+  .watch-row .w-meta { color: var(--muted); font-size: 11.5px; }
+  .watch-row .w-del { margin-left: auto; }
+
+  /* ---- 价格历史 SVG（Phase 4）---- */
+  #detail-history { margin-left: 6px; }
+  .hist-block { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .hist-block svg { display: block; width: 100%; height: auto; }
 </style>
 <body>
 <div class="container">
@@ -338,6 +360,28 @@
   </div>
 </div>
 
+<div class="watch-panel" id="watch-panel">
+  <div class="watch-head">定时监控 <span class="hint">Watch · 到期自动抓取并落库，价格变化可对比</span></div>
+  <div class="watch-form">
+    <input id="watch-keyword" type="text" placeholder="监控关键字，如 laptop" value="" />
+    <select id="watch-marketplace">
+      <option value="com">Amazon.com</option>
+      <option value="cojp">Amazon.co.jp</option>
+      <option value="de">Amazon.de</option>
+      <option value="cn">Amazon.cn</option>
+      <option value="couk">Amazon.co.uk</option>
+    </select>
+    <select id="watch-interval">
+      <option value="30">每 30 分钟</option>
+      <option value="60" selected>每小时</option>
+      <option value="180">每 3 小时</option>
+      <option value="1440">每天</option>
+    </select>
+    <button class="mini-btn" id="watch-add">添加监控</button>
+  </div>
+  <div class="watch-list" id="watch-list"></div>
+</div>
+
 <div id="detail-modal">
   <div class="detail-backdrop" id="detail-backdrop"></div>
   <div class="detail-card" id="detail-card"></div>
@@ -390,6 +434,10 @@ function renderStats(data) {
     <div class="stat-card">
       <div class="label">平均</div>
       <div class="value">${data.avgPrice || '—'}</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">已保存到本地库</div>
+      <div class="value">${data.saved != null ? `${data.saved} 条` : '—'}</div>
     </div>
   `;
 }
@@ -594,10 +642,12 @@ function renderDetail(d) {
     </div>
     ${d.variants && d.variants.length ? `<div class="detail-variants">变体：${d.variants.join(' / ')}</div>` : ''}
     <div style="margin-top:12px;text-align:right;">
+      <button class="mini-btn" id="detail-history">价格历史</button>
       <a class="mini-btn" href="${d.href || '#'}" target="_blank" rel="noopener">打开商品页 →</a>
     </div>
   `;
   document.getElementById('detail-close').addEventListener('click', hideDetail);
+  document.getElementById('detail-history').addEventListener('click', () => showHistory(d.asin, d.marketplace));
 }
 
 async function showDetail(asin, marketplace) {
@@ -629,6 +679,111 @@ tbodyEl.addEventListener('click', e => {
   const btn = e.target.closest('.detail-btn');
   if (btn) showDetail(btn.dataset.asin, marketplaceEl.value);
 });
+
+/* ---- Watch 面板（Phase 4）---- */
+const watchListEl = document.getElementById('watch-list');
+const watchKeywordEl = document.getElementById('watch-keyword');
+const watchMarketplaceEl = document.getElementById('watch-marketplace');
+const watchIntervalEl = document.getElementById('watch-interval');
+
+async function loadWatches() {
+  try {
+    const res = await fetch('/api/watch');
+    const data = await res.json();
+    const watches = data.watches || [];
+    watchListEl.innerHTML = watches.length ? watches.map(w => `
+      <div class="watch-row">
+        <span class="w-kw">${w.keyword}</span>
+        <span class="w-meta">amazon.${w.marketplace} · 每 ${w.intervalMinutes} 分钟</span>
+        <span class="w-meta">上次运行：${w.lastRunAt ? new Date(w.lastRunAt).toLocaleString() : '尚未运行'}</span>
+        <button class="mini-btn w-del" data-id="${w.id}">删除</button>
+      </div>
+    `).join('') : '<div class="hint">还没有监控任务，添加一个开始定时抓取</div>';
+  } catch (e) {
+    watchListEl.innerHTML = `<div class="hint">加载失败：${e.message}</div>`;
+  }
+}
+
+async function addWatch() {
+  const keyword = watchKeywordEl.value.trim();
+  if (!keyword) { watchKeywordEl.focus(); return; }
+  try {
+    const res = await fetch('/api/watch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        keyword,
+        marketplace: watchMarketplaceEl.value,
+        intervalMinutes: parseInt(watchIntervalEl.value, 10),
+      }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    watchKeywordEl.value = '';
+    await loadWatches();
+  } catch (e) {
+    alert(`添加失败：${e.message}`);
+  }
+}
+
+document.getElementById('watch-add').addEventListener('click', addWatch);
+watchListEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.w-del');
+  if (!btn) return;
+  await fetch(`/api/watch/${btn.dataset.id}`, { method: 'DELETE' });
+  loadWatches();
+});
+loadWatches();
+
+/* ---- 价格历史 SVG（Phase 4）---- */
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function renderHistorySvg(points) {
+  const W = 520, H = 150, PAD = 36;
+  const nums = points.map(p => p.priceNum).filter(n => n != null);
+  if (nums.length < 2) return '<div class="hint">价格快照不足（需 ≥2 个），多抓几次再对比</div>';
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const span = (max - min) || 1;
+  const x = i => PAD + (i * (W - PAD * 2)) / (points.length - 1);
+  const y = n => H - 22 - ((n - min) / span) * (H - 44);
+  const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.priceNum).toFixed(1)}`).join(' ');
+  const dots = points.map((p, i) =>
+    `<circle cx="${x(i).toFixed(1)}" cy="${y(p.priceNum).toFixed(1)}" r="3" fill="#8BC8EA"/>`
+  ).join('');
+  const first = points[0];
+  const last = points[points.length - 1];
+  return `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="价格历史">
+      <line x1="${PAD}" y1="${H - 22}" x2="${W - PAD}" y2="${H - 22}" stroke="#E4E3DD"/>
+      <polyline points="${path}" fill="none" stroke="#8BC8EA" stroke-width="2"/>
+      ${dots}
+      <text x="${PAD}" y="${H - 6}" font-size="10" fill="#6B7280">${fmtDate(first.capturedAt)} ${first.priceText || ''}</text>
+      <text x="${W - PAD}" y="${H - 6}" font-size="10" fill="#6B7280" text-anchor="end">${fmtDate(last.capturedAt)} ${last.priceText || ''}</text>
+    </svg>`;
+}
+
+async function showHistory(asin, marketplace) {
+  const card = detailCard;
+  card.querySelectorAll('.hist-block').forEach(el => el.remove());
+  const block = document.createElement('div');
+  block.className = 'hist-block';
+  block.innerHTML = '<div class="hint">加载价格历史…</div>';
+  card.appendChild(block);
+  try {
+    const res = await fetch(`/api/history?asin=${encodeURIComponent(asin)}&marketplace=${encodeURIComponent(marketplace)}&days=30`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    const pts = data.points || [];
+    block.innerHTML =
+      `<div style="font-size:12px;font-weight:600;margin-bottom:6px;">价格历史（近 ${data.days} 天 · ${pts.length} 个快照）</div>` +
+      renderHistorySvg(pts);
+  } catch (e) {
+    block.innerHTML = `<div class="detail-error">历史加载失败：${e.message}</div>`;
+  }
+}
 </script>
 </body>
 </html>

@@ -58,6 +58,7 @@ docker compose up --build
 | `RETRY_MAX_ATTEMPTS` | `3` | 单页最多物理 Attempt 次数（1 = 不重试）。夹紧 [1,5]；只有 network/timeout 会重试 |
 | `RETRY_BACKOFF_MS` | `3000` | 可重试失败后的退避（毫秒）。**硬下限 2000**，配低了会被夹紧 |
 | `PROXIES` | 空 | 逗号分隔的代理 URL，支持 `http://user:pass@host:port` 认证。1 个 = 按 Job 轮换；≥2 个自动升级为每 Attempt 轮换（ADR-0003）。留空 = 直连 |
+| `DB_PATH` | `data/amazon.db` | SQLite 数据库路径（ADR-0006）；`:memory:` = 进程内临时库（测试用） |
 
 后两个硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。
 
@@ -82,18 +83,27 @@ amazon-scraper/
 │   │   ├── 0001-four-phase-roadmap.md
 │   │   ├── 0002-typescript-migration.md
 │   │   ├── 0003-proxy-pool.md
-│   │   └── 0004-marketplace-registry.md
+│   │   ├── 0004-marketplace-registry.md
+│   │   └── 0005-product-detail.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
-├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail）
+├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail / persistence）
 ├── src/
-│   ├── index.ts              # 入口：loadConfig → createApp → listen + graceful shutdown
+│   ├── index.ts              # 入口：loadConfig → createStore → createApp → listen + scheduler + graceful shutdown
 │   ├── app.ts                # createApp 工厂（可脱离 listen 单测）
 │   ├── config.ts             # AppConfig + loadConfig；夹紧 AGENTS.md 硬约束
-│   ├── types.ts              # Marketplace / Listing / ScrapeJob / AttemptSummary / FailureClass
+│   ├── scheduler.ts          # Watch 调度器（60s tick 扫描到期 Watch → runSearchJob → 落库）
+│   ├── types.ts              # Marketplace / Listing / ProductDetail / ScrapeJob / AttemptSummary / FailureClass
+│   ├── db/
+│   │   ├── schema.ts         # SQLite 建表/迁移（user_version）
+│   │   ├── persistence.ts    # Persistence 接口 + SqlitePersistence（listings/snapshots/watches）
+│   │   └── store.ts          # createStore 装配（文件或 :memory:）
 │   ├── routes/
 │   │   ├── health.ts         # GET /api/health
-│   │   ├── scrape.ts         # POST /api/scrape
-│   │   ├── detail.ts         # POST /api/detail（ADR-0005）
+│   │   ├── scrape.ts         # POST /api/scrape（成功即落库，saved 字段）
+│   │   ├── detail.ts         # POST /api/detail（ADR-0005，成功即落库）
+│   │   ├── history.ts        # GET /api/history（价格历史）
+│   │   ├── listings.ts       # GET /api/listings（库内检索）
+│   │   ├── watch.ts          # POST/GET /api/watch + DELETE /api/watch/:id
 │   │   └── browser-runner.ts # 按代理配置解析 Job 浏览器（共享 vs 每 Attempt 轮换）
 │   ├── scraper/
 │   │   ├── browser.ts        # detectChromePath + launchBrowser（支持 --proxy-server）
@@ -108,9 +118,10 @@ amazon-scraper/
 ├── tests/
 │   ├── api.test.ts           # supertest 集成测试（health / 入参校验）
 │   ├── scrape-api.test.ts    # /api/scrape mock 集成测试（不启动真实 Chrome）
-│   └── detail-api.test.ts    # /api/detail mock 集成测试（不启动真实 Chrome）
+│   ├── detail-api.test.ts    # /api/detail mock 集成测试（不启动真实 Chrome）
+│   └── persistence-api.test.ts # /api/history、/api/listings、/api/watch 集成测试（纯 DB）
 └── public/
-    └── index.html            # 前端（零依赖单文件）
+    └── index.html            # 前端（零依赖单文件：搜索 + 详情 + Watch + 价格历史 SVG）
 ```
 
 ## API
@@ -235,7 +246,7 @@ amazon-scraper/
 }
 ```
 
-`detail` 为 `null` 表示未抓到（`attempts` 里有失败分类）。ASIN 格式非法返回 `400`。
+`detail` 为 `null` 表示未抓到（`attempts` 里有失败分类）。ASIN 格式非法返回 `400`。抓到详情会自动落库（ADR-0006），响应带 `saved: 1`。
 
 失败分类枚举（`FailureClass`）：
 
@@ -245,15 +256,56 @@ amazon-scraper/
 - `parser-miss` — 页面拿到了但没解析到 Listing（Amazon 改了 DOM 结构？空搜索结果？），该页不重试、继续下一页
 - `unknown` — 兜底
 
+### `GET /api/history`
+
+查询某 ASIN 的价格历史点（只追加的 `price_snapshots`）：
+
+```text
+GET /api/history?asin=B09S3HNMHF&marketplace=com&days=30
+→ { asin, marketplace, days, points: [{ capturedAt, priceText, priceNum, currency }] }
+```
+
+### `GET /api/listings`
+
+从本地库检索已保存的 Listing（模糊匹配标题 + 排序）：
+
+```text
+GET /api/listings?keyword=laptop&marketplace=com&sort=price-asc&limit=100
+→ { count, items: [Listing...] }   # sort: price-asc | price-desc | rating | updated
+```
+
+### `/api/watch`
+
+创建 / 列出 / 删除定时监控（进程内调度器 60s 扫描到期项，触发抓取并落库）：
+
+```text
+POST   /api/watch { keyword, marketplace, intervalMinutes }   # intervalMinutes 夹紧 [30, 10080]
+GET    /api/watch
+DELETE /api/watch/:id
+```
+
+## 持久化（ADR-0006）
+
+SQLite 单文件（默认 `data/amazon.db`），三张表：
+
+- `listings` — 每个 `(marketplace, asin)` 的最新状态（upsert）
+- `price_snapshots` — 价格快照，只追加不更新（历史趋势的数据源）
+- `watches` — 定时监控任务（keyword / marketplace / interval / last_run_at）
+
+`POST /api/scrape` 与 `POST /api/detail` 成功即自动写入，无需手动保存；进程重启数据仍在。测试用 `DB_PATH=:memory:`。
+
 ## 前端功能
 
 - **关键字输入**：回车或点"立即抓取"
 - **站点选择**：com / cojp / de / cn / couk
 - **页数选择**：1 / 2 / 3 / 5 / 10 页
-- **统计卡片**：总数、站点、页数、有/无价格数、最低/最高/平均价格
+- **统计卡片**：总数、站点、页数、有/无价格数、最低/最高/平均价格、已保存条数
 - **筛选**：全部 / 有价格 / 无价格
 - **点击排序**：点击表头按价格或评分排序
 - **星级展示**：5 星可视化 + 阿拉伯数字
+- **商品详情**：行内"详情"按钮 → Buy Box 卡片（价格/卖家/运费/Prime/库存/变体/评论数）
+- **价格历史**：详情卡片的"价格历史"按钮 → SVG 趋势图（零依赖手绘）
+- **Watch 面板**：添加/删除定时监控，展示上次运行时间
 - **跳转链接**：直接打开对应站点的 Amazon 商品页
 - **CSV 导出**：带 UTF-8 BOM 的 CSV（Excel 友好）
 
@@ -296,7 +348,7 @@ Parser 与 Scraper 严格分层：Parser 是纯函数（DOM → 领域对象，�
 | `npm run build` | tsc → `dist/` |
 | `npm start` | 跑 `dist/index.js` |
 | `npm run typecheck` | 只跑 tsc --noEmit |
-| `npm test` | vitest run（parser / config / proxy / stealth / search / API，含 mock 集成） |
+| `npm test` | vitest run（parser / config / proxy / stealth / search / detail / db / scheduler / API，含 mock 集成） |
 | `npm run test:watch` | vitest 交互模式 |
 
 CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 矩阵的 install → typecheck → build → test，最后 docker build 一次。
@@ -307,8 +359,8 @@ CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 �
 
 - [x] **Phase 1** — 工程化重构（TS + 模块拆分 + 测试 + Docker + CI）
 - [x] **Phase 2** — 抓取稳定性（Retry / Proxy Pool / stealth / 多 Marketplace / /api/scrape 集成测试）
-- [ ] **Phase 3** — 商品详情（Detail Scraper + Parser，扩展 Listing schema 到 Buy Box / 卖家 / 运费 / 变体 / 评论数）
-- [ ] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch，node-cron 调度 Job，前端历史曲线）
+- [x] **Phase 3** — 商品详情（Detail Scraper + Parser，ProductDetail + Buy Box / 卖家 / 运费 / 变体 / 评论数）
+- [x] **Phase 4** — 持久化 + 定时（SQLite 存 Listing / Price Snapshot / Watch，进程内调度器，前端历史曲线）
 
 ## 常见问题
 

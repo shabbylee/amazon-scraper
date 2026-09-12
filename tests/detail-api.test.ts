@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { createStore } from '../src/db/store.js';
 import { launchBrowser } from '../src/scraper/browser.js';
 
 /**
@@ -15,6 +16,11 @@ vi.mock('../src/scraper/browser.js', () => ({
 }));
 
 const mockLaunchBrowser = vi.mocked(launchBrowser);
+
+const config = loadConfig({ env: { HEADLESS: 'true' }, envFilePath: '/nonexistent/.env' });
+const store = createStore({ ...config, dbPath: ':memory:' });
+
+afterAll(() => store.close());
 
 const detailRaw = {
   title: 'Samsung Galaxy Chromebook Go',
@@ -53,8 +59,7 @@ beforeEach(() => {
 
 describe('POST /api/detail', () => {
   it('rejects a missing or malformed asin before touching puppeteer', async () => {
-    const config = loadConfig({ env: {}, envFilePath: '/nonexistent/.env' });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     await request(app).post('/api/detail').send({}).expect(400);
     await request(app).post('/api/detail').send({ asin: 'tooshort' }).expect(400);
@@ -66,8 +71,7 @@ describe('POST /api/detail', () => {
     const page = makePage({ raw: detailRaw });
     mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
-    const config = loadConfig({ env: { HEADLESS: 'true' }, envFilePath: '/nonexistent/.env' });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/detail')
@@ -90,8 +94,7 @@ describe('POST /api/detail', () => {
     const page = makePage({ raw: detailRaw, captcha: true });
     mockLaunchBrowser.mockResolvedValue({ newPage: async () => page, close: async () => {} } as never);
 
-    const config = loadConfig({ env: { HEADLESS: 'true' }, envFilePath: '/nonexistent/.env' });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/detail')

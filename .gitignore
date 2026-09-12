@@ -16,6 +16,7 @@ dist/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+data/
 
 # 附件/素材（如需纳入版本管理可删除下面这行）
 .scratch/**/assets/

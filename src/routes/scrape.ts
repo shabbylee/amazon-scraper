@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { Browser } from 'puppeteer';
 import type { AppConfig } from '../config.js';
+import type { Persistence } from '../db/persistence.js';
 import { createProxyPool } from '../scraper/proxy.js';
 import { runSearchJob } from '../scraper/search.js';
 import { isMarketplaceId, type Listing, type MarketplaceId, type ScrapeJob } from '../types.js';
@@ -47,7 +48,7 @@ function summarize(listings: readonly Listing[]) {
   };
 }
 
-export function scrapeHandler(config: AppConfig): RequestHandler {
+export function scrapeHandler(config: AppConfig, store: Persistence): RequestHandler {
   const proxyPool = createProxyPool(config.proxies);
   return async (req, res) => {
     const body = (req.body ?? {}) as ScrapeRequestBody;
@@ -82,11 +83,15 @@ export function scrapeHandler(config: AppConfig): RequestHandler {
         retryBackoffMs: config.retryBackoffMs,
       });
 
+      // ADR-0006：抓取成功即落库（listings upsert + snapshots 只追加）
+      const saved = store.saveScrapeResult(job.marketplace, result.listings);
+
       res.json({
         keyword: job.keyword,
         marketplace: job.marketplace,
         pagesScraped: job.pages,
         proxy: proxyLabel(jobBrowser, config.proxies.length),
+        saved,
         ...summarize(result.listings),
         attempts: result.attempts,
       });

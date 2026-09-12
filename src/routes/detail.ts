@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { Browser } from 'puppeteer';
 import type { AppConfig } from '../config.js';
+import type { Persistence } from '../db/persistence.js';
 import { createProxyPool } from '../scraper/proxy.js';
 import { runDetailJob } from '../scraper/detail.js';
 import { isMarketplaceId, type DetailJob, type MarketplaceId } from '../types.js';
@@ -14,7 +15,7 @@ interface DetailRequestBody {
 /** ASIN 是 10 位字母数字（Amazon Standard Identification Number）。 */
 const ASIN_RE = /^[A-Z0-9]{10}$/i;
 
-export function detailHandler(config: AppConfig): RequestHandler {
+export function detailHandler(config: AppConfig, store: Persistence): RequestHandler {
   const proxyPool = createProxyPool(config.proxies);
   return async (req, res) => {
     const body = (req.body ?? {}) as DetailRequestBody;
@@ -43,10 +44,14 @@ export function detailHandler(config: AppConfig): RequestHandler {
         retryBackoffMs: config.retryBackoffMs,
       });
 
+      // ADR-0006：抓到详情即落库（Buy Box 快照）
+      if (result.detail) store.saveDetail(result.detail);
+
       res.json({
         asin: job.asin,
         marketplace: job.marketplace,
         proxy: proxyLabel(jobBrowser, config.proxies.length),
+        saved: result.detail ? 1 : 0,
         detail: result.detail,
         attempts: result.attempts,
       });

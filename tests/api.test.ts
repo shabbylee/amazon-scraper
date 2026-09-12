@@ -1,16 +1,20 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { createStore } from '../src/db/store.js';
 
 /**
  * /api/health 是不启动浏览器的轻量端点，可安全做集成测试。
  * /api/scrape 会真的 launch puppeteer，不在 CI 里跑，留给 Phase 2 加 mock 后再补。
  */
-describe('GET /api/health', () => {
-  const config = loadConfig({ env: { HEADLESS: 'true' }, envFilePath: '/nonexistent/.env' });
-  const app = createApp(config);
+const config = loadConfig({ env: { HEADLESS: 'true' }, envFilePath: '/nonexistent/.env' });
+const store = createStore({ ...config, dbPath: ':memory:' });
+const app = createApp(config, store);
 
+afterAll(() => store.close());
+
+describe('GET /api/health', () => {
   it('returns ok:true with the resolved runtime info', async () => {
     const res = await request(app).get('/api/health').expect(200);
     expect(res.body).toMatchObject({
@@ -26,9 +30,6 @@ describe('GET /api/health', () => {
 });
 
 describe('POST /api/scrape (validation only)', () => {
-  const config = loadConfig({ env: {}, envFilePath: '/nonexistent/.env' });
-  const app = createApp(config);
-
   it('rejects a request with no keyword before touching puppeteer', async () => {
     const res = await request(app)
       .post('/api/scrape')

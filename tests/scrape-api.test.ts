@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { createStore } from '../src/db/store.js';
 import { launchBrowser } from '../src/scraper/browser.js';
 
 /**
@@ -16,6 +17,12 @@ vi.mock('../src/scraper/browser.js', () => ({
 }));
 
 const mockLaunchBrowser = vi.mocked(launchBrowser);
+
+const store = createStore({
+  ...loadConfig({ env: {}, envFilePath: '/nonexistent/.env' }),
+  dbPath: ':memory:',
+});
+afterAll(() => store.close());
 
 /** 根据 evaluate 的函数源码区分调用方，返回对应 canned 结果。 */
 function makePage(opts: {
@@ -79,7 +86,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       env: { HEADLESS: 'true' },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
@@ -108,7 +115,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       env: { HEADLESS: 'true' },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
@@ -131,7 +138,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       env: { HEADLESS: 'true', RETRY_BACKOFF_MS: '2000' },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
@@ -152,7 +159,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       env: { HEADLESS: 'true', PROXIES: 'http://proxy.example:8080' },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
@@ -173,7 +180,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       env: { HEADLESS: 'true', PROXIES: 'http://a.example:8080,http://b.example:8080' },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
@@ -199,7 +206,7 @@ describe('POST /api/scrape (browser mocked, real pipeline)', () => {
       },
       envFilePath: '/nonexistent/.env',
     });
-    const app = createApp(config);
+    const app = createApp(config, store);
 
     const res = await request(app)
       .post('/api/scrape')
