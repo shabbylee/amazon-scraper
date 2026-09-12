@@ -32,6 +32,8 @@ export function detectChromePath(env: NodeJS.ProcessEnv = process.env): string |
 export interface LaunchBrowserOptions {
   readonly chromePath: string | null;
   readonly headless: boolean;
+  /** 代理 URL（ADR-0003）；null = 直连。 */
+  readonly proxy: string | null;
 }
 
 export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser> {
@@ -43,6 +45,7 @@ export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser
     '--disable-gpu',
     '--lang=zh-CN',
   ];
+  if (opts.proxy) args.push(`--proxy-server=${opts.proxy}`);
   const launchOpts: LaunchOptions = { headless: opts.headless, args };
   if (opts.chromePath) launchOpts.executablePath = opts.chromePath;
   return puppeteer.launch(launchOpts);

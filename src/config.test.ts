@@ -76,6 +76,12 @@ describe('loadConfig', () => {
     expect(loadConfig(opts({ RETRY_BACKOFF_MS: '5000' })).retryBackoffMs).toBe(5000);
   });
 
+  it('parses PROXIES as a trimmed, comma-separated list (empty = direct)', () => {
+    expect(loadConfig(opts({})).proxies).toEqual([]);
+    expect(loadConfig(opts({ PROXIES: 'http://a.example:8080, http://b.example:8080,  ' })).proxies)
+      .toEqual(['http://a.example:8080', 'http://b.example:8080']);
+  });
+
   it('rejects an unsupported DEFAULT_MARKETPLACE with a helpful error', () => {
     expect(() => loadConfig(opts({ DEFAULT_MARKETPLACE: 'xx' }))).toThrowError(
       /Unsupported DEFAULT_MARKETPLACE: xx/

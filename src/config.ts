@@ -49,6 +49,8 @@ export interface AppConfig {
   readonly maxConcurrentAttempts: number;
   readonly retryMaxAttempts: number;
   readonly retryBackoffMs: number;
+  /** 逗号分隔的代理 URL 列表（ADR-0003）；空 = 直连。 */
+  readonly proxies: readonly string[];
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -92,6 +94,11 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
   const concurrencyRaw = Number.parseInt(read('MAX_CONCURRENT_ATTEMPTS') ?? '1', 10);
   const retryMaxAttemptsRaw = Number.parseInt(read('RETRY_MAX_ATTEMPTS') ?? '3', 10);
   const retryBackoffRaw = Number.parseInt(read('RETRY_BACKOFF_MS') ?? '3000', 10);
+  const proxiesRaw = read('PROXIES') ?? '';
+  const proxies = proxiesRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 
   return {
     port,
@@ -114,6 +121,7 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
       MIN_RETRY_BACKOFF_MS,
       Number.isFinite(retryBackoffRaw) ? retryBackoffRaw : MIN_RETRY_BACKOFF_MS
     ),
+    proxies,
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,
   };

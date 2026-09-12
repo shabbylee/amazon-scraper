@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import type { Browser } from 'puppeteer';
 import type { AppConfig } from '../config.js';
 import { launchBrowser } from '../scraper/browser.js';
+import { createProxyPool } from '../scraper/proxy.js';
 import { runSearchJob } from '../scraper/search.js';
 import { isMarketplaceId, type Listing, type MarketplaceId, type ScrapeJob } from '../types.js';
 
@@ -47,6 +48,7 @@ function summarize(listings: readonly Listing[]) {
 }
 
 export function scrapeHandler(config: AppConfig): RequestHandler {
+  const proxyPool = createProxyPool(config.proxies);
   return async (req, res) => {
     const body = (req.body ?? {}) as ScrapeRequestBody;
     const keyword = typeof body.keyword === 'string' ? body.keyword.trim() : '';
@@ -67,9 +69,12 @@ export function scrapeHandler(config: AppConfig): RequestHandler {
 
     let browser: Browser | null = null;
     try {
+      // 代理按 Job 轮换（ADR-0003）：每个 Job 取一个代理，Job 内共享
+      const proxy = await proxyPool.next();
       browser = await launchBrowser({
         chromePath: config.chromePath,
         headless: config.headless,
+        proxy: proxy?.url ?? null,
       });
       const result = await runSearchJob(job, {
         browser,
@@ -81,6 +86,7 @@ export function scrapeHandler(config: AppConfig): RequestHandler {
         keyword: job.keyword,
         marketplace: job.marketplace,
         pagesScraped: job.pages,
+        proxy: proxy?.label ?? null,
         ...summarize(result.listings),
         attempts: result.attempts,
       });

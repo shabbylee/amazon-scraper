@@ -13,6 +13,9 @@ export function healthHandler(config: AppConfig): RequestHandler {
       defaultMarketplace: config.defaultMarketplace,
       requestIntervalMs: config.requestIntervalMs,
       maxConcurrentAttempts: config.maxConcurrentAttempts,
+      retryMaxAttempts: config.retryMaxAttempts,
+      retryBackoffMs: config.retryBackoffMs,
+      proxyPoolSize: config.proxies.length,
     });
   };
 }
