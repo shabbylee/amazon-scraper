@@ -1,10 +1,10 @@
 import type { RequestHandler } from 'express';
 import type { Browser } from 'puppeteer';
 import type { AppConfig } from '../config.js';
-import { launchBrowser } from '../scraper/browser.js';
 import { createProxyPool } from '../scraper/proxy.js';
 import { runSearchJob } from '../scraper/search.js';
 import { isMarketplaceId, type Listing, type MarketplaceId, type ScrapeJob } from '../types.js';
+import { createJobBrowser, proxyLabel } from './browser-runner.js';
 
 interface ScrapeRequestBody {
   keyword?: unknown;
@@ -69,46 +69,24 @@ export function scrapeHandler(config: AppConfig): RequestHandler {
 
     let browser: Browser | null = null;
     try {
-      // ADR-0003：单代理/直连 → 按 Job 轮换、Job 内共享浏览器；
-      // 多代理（>1）→ 每 Attempt 换代理（每次重启浏览器），轮换粒度更细。
-      const perAttemptRotation = config.proxies.length > 1;
-      const proxy = perAttemptRotation ? null : await proxyPool.next();
+      const jobBrowser = await createJobBrowser(config, proxyPool);
+      const shared = jobBrowser.mode === 'shared';
+      if (shared) browser = jobBrowser.browser;
 
-      let result: Awaited<ReturnType<typeof runSearchJob>>;
-      if (perAttemptRotation) {
-        result = await runSearchJob(job, {
-          browserFactory: async () => {
-            const p = await proxyPool.next();
-            return launchBrowser({
-              chromePath: config.chromePath,
-              headless: config.headless,
-              proxy: p?.url ?? null,
-            });
-          },
-          requestIntervalMs: config.requestIntervalMs,
-          retryMaxAttempts: config.retryMaxAttempts,
-          retryBackoffMs: config.retryBackoffMs,
-        });
-      } else {
-        browser = await launchBrowser({
-          chromePath: config.chromePath,
-          headless: config.headless,
-          proxy: proxy?.url ?? null,
-        });
-        result = await runSearchJob(job, {
-          browser,
-          proxy,
-          requestIntervalMs: config.requestIntervalMs,
-          retryMaxAttempts: config.retryMaxAttempts,
-          retryBackoffMs: config.retryBackoffMs,
-        });
-      }
+      const result = await runSearchJob(job, {
+        ...(shared
+          ? { browser: jobBrowser.browser, proxy: jobBrowser.proxy }
+          : { browserFactory: jobBrowser.browserFactory }),
+        requestIntervalMs: config.requestIntervalMs,
+        retryMaxAttempts: config.retryMaxAttempts,
+        retryBackoffMs: config.retryBackoffMs,
+      });
 
       res.json({
         keyword: job.keyword,
         marketplace: job.marketplace,
         pagesScraped: job.pages,
-        proxy: perAttemptRotation ? `rotating:${config.proxies.length}` : proxy?.label ?? null,
+        proxy: proxyLabel(jobBrowser, config.proxies.length),
         ...summarize(result.listings),
         attempts: result.attempts,
       });

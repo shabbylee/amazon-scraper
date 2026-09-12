@@ -84,7 +84,7 @@ amazon-scraper/
 │   │   ├── 0003-proxy-pool.md
 │   │   └── 0004-marketplace-registry.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
-├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests）
+├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail）
 ├── src/
 │   ├── index.ts              # 入口：loadConfig → createApp → listen + graceful shutdown
 │   ├── app.ts                # createApp 工厂（可脱离 listen 单测）
@@ -92,17 +92,23 @@ amazon-scraper/
 │   ├── types.ts              # Marketplace / Listing / ScrapeJob / AttemptSummary / FailureClass
 │   ├── routes/
 │   │   ├── health.ts         # GET /api/health
-│   │   └── scrape.ts         # POST /api/scrape
+│   │   ├── scrape.ts         # POST /api/scrape
+│   │   ├── detail.ts         # POST /api/detail（ADR-0005）
+│   │   └── browser-runner.ts # 按代理配置解析 Job 浏览器（共享 vs 每 Attempt 轮换）
 │   ├── scraper/
 │   │   ├── browser.ts        # detectChromePath + launchBrowser（支持 --proxy-server）
 │   │   ├── proxy.ts          # ProxyPool 接口 + Static/Noop + createProxyPool（ADR-0003）
+│   │   ├── proxy-auth.ts     # CDP Fetch 域注入 Proxy-Authorization（ADR-0003）
 │   │   ├── stealth.ts        # 轻量反自动化指纹（零依赖）
-│   │   └── search.ts         # buildSearchUrl / classifyError / isCaptchaPage / scrapeSearchPage / runSearchJob（含重试）
+│   │   ├── search.ts         # buildSearchUrl / classifyError / isCaptchaPage / scrapeSearchPage / runSearchJob（含重试）
+│   │   └── detail.ts         # buildDetailUrl / scrapeDetailPage / runDetailJob（单目标重试编排）
 │   └── parser/
-│       └── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 parsePriceNum / toListings
+│       ├── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 parsePriceNum / toListings
+│       └── detail-page.ts    # 浏览器侧 extractDetailInPage + Node 侧 toDetail
 ├── tests/
 │   ├── api.test.ts           # supertest 集成测试（health / 入参校验）
-│   └── scrape-api.test.ts    # /api/scrape mock 集成测试（不启动真实 Chrome）
+│   ├── scrape-api.test.ts    # /api/scrape mock 集成测试（不启动真实 Chrome）
+│   └── detail-api.test.ts    # /api/detail mock 集成测试（不启动真实 Chrome）
 └── public/
     └── index.html            # 前端（零依赖单文件）
 ```
@@ -180,6 +186,56 @@ amazon-scraper/
 ```
 
 `attempts` 记录每次物理 Attempt：同一 `page` 可能因重试出现多条，`attempt` 是页内序号（1 起）。遇到 `captcha` 会立即停止后续页（AGENTS.md 硬约束），已抓到的页仍然返回。`proxy` 是本次 Job 使用的代理 label（未配置为 `null`）。
+
+### `POST /api/detail`
+
+按 ASIN 抓取商品详情页（ADR-0005），返回 `ProductDetail`：Buy Box（价格/卖家/运费/Prime/库存）、评分、评论数、变体。复用全部稳定性设施（重试 / stealth / 代理认证 / 代理轮换）。
+
+请求：
+
+```json
+{
+  "asin": "B09S3HNMHF",
+  "marketplace": "com"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `asin` | string | **必填**，10 位字母数字（自动归一化为大写） |
+| `marketplace` | string | 可选，默认走 `DEFAULT_MARKETPLACE` |
+
+响应：
+
+```json
+{
+  "asin": "B09S3HNMHF",
+  "marketplace": "com",
+  "proxy": null,
+  "detail": {
+    "marketplace": "com",
+    "asin": "B09S3HNMHF",
+    "href": "https://www.amazon.com/dp/B09S3HNMHF",
+    "title": "Samsung Galaxy Chromebook Go",
+    "image": "https://m.media-amazon.com/images/I/...",
+    "rating": 4.3,
+    "reviewCount": 1234,
+    "buyBox": {
+      "hasBuyBox": true,
+      "priceText": "$249.00",
+      "priceNum": 249,
+      "sellerName": "Amazon.com",
+      "shippingText": "FREE delivery",
+      "isPrime": true,
+      "inStock": true
+    },
+    "variants": ["Mineral Silver", "Ash Gray"]
+  },
+  "attempts": [{ "attempt": 1, "page": 1, "ok": true, "durationMs": 4110, "listingCount": 1 }]
+}
+```
+
+`detail` 为 `null` 表示未抓到（`attempts` 里有失败分类）。ASIN 格式非法返回 `400`。
 
 失败分类枚举（`FailureClass`）：
 

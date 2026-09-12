@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { AppConfig } from './config.js';
 import { healthHandler } from './routes/health.js';
 import { scrapeHandler } from './routes/scrape.js';
+import { detailHandler } from './routes/detail.js';
 
 export function createApp(config: AppConfig): Express {
   const app = express();
@@ -13,6 +14,7 @@ export function createApp(config: AppConfig): Express {
 
   app.get('/api/health', healthHandler(config));
   app.post('/api/scrape', scrapeHandler(config));
+  app.post('/api/detail', detailHandler(config));
 
   app.get('/', (_req, res) => {
     res.sendFile(path.join(config.publicDir, 'index.html'));

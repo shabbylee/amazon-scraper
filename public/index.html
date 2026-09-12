@@ -240,6 +240,32 @@
     .col-title { min-width: 140px; }
     .col-img img { width: 36px; height: 36px; }
   }
+
+  /* ---- 商品详情（Phase 3）---- */
+  .detail-btn { margin-left: 6px; cursor: pointer; }
+  #detail-modal { position: fixed; inset: 0; z-index: 100; display: none; }
+  .detail-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.45); }
+  .detail-card {
+    position: relative; max-width: 560px; margin: 8vh auto; background: #fff;
+    border-radius: 14px; padding: 20px; box-sizing: border-box;
+    max-height: 76vh; overflow: auto; font-size: 13.5px; color: #1A1B1C;
+  }
+  .detail-card #detail-close {
+    position: absolute; top: 10px; right: 10px; border: none; background: transparent;
+    font-size: 20px; cursor: pointer; color: #666; line-height: 1;
+  }
+  .detail-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 14px; }
+  .detail-head img { width: 84px; height: 84px; object-fit: contain; border-radius: 8px; border: 1px solid var(--border); }
+  .detail-title { font-size: 15px; font-weight: 600; line-height: 1.45; }
+  .detail-meta { margin-top: 6px; color: var(--muted); }
+  .detail-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .detail-grid > div {
+    flex: 1 1 140px; min-width: 0; padding: 10px 12px; border-radius: 10px;
+    background: var(--bg); box-sizing: border-box;
+  }
+  .detail-grid .lbl { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+  .detail-variants { margin-top: 12px; color: var(--muted); }
+  .detail-error { color: var(--red); }
 </style>
 <body>
 <div class="container">
@@ -289,7 +315,6 @@
 
   <div id="results" style="display:none;">
     <div class="stats" id="stats"></div>
-
     <div class="table-wrap">
       <div class="toolbar">
         <div class="filter-wrap" id="filters"></div>
@@ -311,6 +336,11 @@
       </table>
     </div>
   </div>
+</div>
+
+<div id="detail-modal">
+  <div class="detail-backdrop" id="detail-backdrop"></div>
+  <div class="detail-card" id="detail-card"></div>
 </div>
 
 <script>
@@ -433,6 +463,7 @@ function renderTable() {
       </td>
       <td class="col-link">
         <a href="${x.href}" target="_blank" rel="noopener">打开 →</a>
+        <button class="mini-btn detail-btn" data-asin="${x.asin || ''}">详情</button>
       </td>
     </tr>
   `).join('');
@@ -536,6 +567,68 @@ async function go() {
 
 goBtn.addEventListener('click', go);
 keywordEl.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+
+/* ---- 商品详情（Phase 3）---- */
+const detailModal = document.getElementById('detail-modal');
+const detailCard = document.getElementById('detail-card');
+
+function hideDetail() { detailModal.style.display = 'none'; }
+
+function renderDetail(d) {
+  const b = d.buyBox || {};
+  detailCard.innerHTML = `
+    <button id="detail-close" aria-label="关闭">×</button>
+    <div class="detail-head">
+      ${d.image ? `<img src="${d.image}" alt="" onerror="this.style.display='none'"/>` : ''}
+      <div>
+        <div class="detail-title">${d.title || '—'}</div>
+        <div class="detail-meta">${ratingStars(d.rating)}${d.reviewCount != null ? ` · ${d.reviewCount.toLocaleString()} 条评价` : ''}</div>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div><div class="lbl">Buy Box 价格</div><div class="price-num">${b.hasBuyBox ? b.priceText : '—'}</div></div>
+      <div><div class="lbl">卖家</div><div>${b.sellerName || '—'}</div></div>
+      <div><div class="lbl">运费</div><div>${b.shippingText || '—'}</div></div>
+      <div><div class="lbl">Prime</div><div>${b.isPrime ? '✓' : '—'}</div></div>
+      <div><div class="lbl">库存</div><div>${b.inStock ? '有货' : '无货'}</div></div>
+    </div>
+    ${d.variants && d.variants.length ? `<div class="detail-variants">变体：${d.variants.join(' / ')}</div>` : ''}
+    <div style="margin-top:12px;text-align:right;">
+      <a class="mini-btn" href="${d.href || '#'}" target="_blank" rel="noopener">打开商品页 →</a>
+    </div>
+  `;
+  document.getElementById('detail-close').addEventListener('click', hideDetail);
+}
+
+async function showDetail(asin, marketplace) {
+  if (!asin) return;
+  detailModal.style.display = 'block';
+  detailCard.innerHTML = '<div class="hint" style="text-align:center;padding:24px 0;">抓取详情中…</div>';
+  try {
+    const res = await fetch('/api/detail', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ asin, marketplace }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || `服务器错误：${res.status}`);
+    if (!data.detail) {
+      const why = (data.attempts && data.attempts[0] && data.attempts[0].failure) || 'unknown';
+      detailCard.innerHTML = `<div class="hint" style="text-align:center;padding:24px 0;">未抓到详情（${why}），可能触发反爬或页面结构变化。</div>`;
+      return;
+    }
+    renderDetail(data.detail);
+  } catch (err) {
+    detailCard.innerHTML = `<div class="detail-error" style="text-align:center;padding:24px 0;">详情抓取失败：${err.message}</div>`;
+  }
+}
+
+document.getElementById('detail-backdrop').addEventListener('click', hideDetail);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideDetail(); });
+tbodyEl.addEventListener('click', e => {
+  const btn = e.target.closest('.detail-btn');
+  if (btn) showDetail(btn.dataset.asin, marketplaceEl.value);
+});
 </script>
 </body>
 </html>

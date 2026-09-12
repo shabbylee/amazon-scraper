@@ -107,3 +107,43 @@ export interface ScrapeResult {
   readonly listings: readonly Listing[];
   readonly attempts: readonly AttemptSummary[];
 }
+
+/**
+ * Buy Box：详情页上"加入购物车"归属的那一个卖家 Offer（ADR-0005）。
+ * 一个 Listing 可能没有 Buy Box（无货 / 未开售）。
+ */
+export interface BuyBox {
+  readonly hasBuyBox: boolean;
+  readonly priceText: string;
+  readonly priceNum: number | null;
+  readonly sellerName: string;
+  readonly shippingText: string;
+  readonly isPrime: boolean;
+  readonly inStock: boolean;
+}
+
+/** ProductDetail：商品详情页数据，与 Listing 并列的领域类型（ADR-0005）。 */
+export interface ProductDetail {
+  readonly marketplace: MarketplaceId;
+  readonly asin: string;
+  readonly href: string;
+  readonly title: string;
+  readonly image: string | null;
+  readonly rating: number | null;
+  readonly reviewCount: number | null;
+  readonly buyBox: BuyBox;
+  /** 可见变体行文本（颜色/尺寸等），不做结构化映射（ADR-0005）。 */
+  readonly variants: readonly string[];
+}
+
+export interface DetailJob {
+  readonly asin: string;
+  readonly marketplace: MarketplaceId;
+  readonly trigger: JobTrigger;
+}
+
+export interface DetailResult {
+  readonly job: DetailJob;
+  readonly detail: ProductDetail | null;
+  readonly attempts: readonly AttemptSummary[];
+}

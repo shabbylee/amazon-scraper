@@ -26,6 +26,13 @@ _Avoid_: 商品编号、SKU、ID
 Amazon 商品详情页上"加入购物车"归属的那一个卖家 Offer，包含价格、运费、卖家名、Prime 状态、库存。一个 Listing 可能没有 Buy Box（无货 / 未开售）。
 _Avoid_: 购物车、默认卖家、主 Offer
 
+**ProductDetail**:
+商品详情页（`/dp/ASIN`）抓取的领域对象，与 Listing 并列（ADR-0005）：携带标题、图片、评分、评论数、Buy Box（子对象）、可见变体列表。搜索结果页采不到 Buy Box，因此不往 Listing 上堆字段。
+_Avoid_: 商品页、product page、item detail
+
+**Detail Job**:
+对单个 ASIN 发起的一次详情抓取任务，含 `(ASIN, Marketplace, Trigger)`。与 Scrape Job 同理，是编排单位，可能包含多次 Attempt。
+
 **Scrape Job**:
 用户或调度器提交的一次抓取任务，含 `(Keyword, Marketplace, Pages, Trigger)`。Job 是**编排单位**，可能包含多次 Attempt。
 _Avoid_: 任务、request、抓取（作为可数名词时）
