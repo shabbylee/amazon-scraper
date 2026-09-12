@@ -3,18 +3,21 @@
  * 修改此文件前先读 CONTEXT.md，术语不要漂移。
  */
 
-export type MarketplaceId = 'com';
+export type MarketplaceId = 'com' | 'cojp' | 'de' | 'cn' | 'couk';
 
 export interface Marketplace {
   readonly id: MarketplaceId;
   readonly host: string;
   readonly currency: string;
   readonly locale: string;
+  /** 价格文本里的小数分隔符（de 用逗号，其余用点）。见 ADR-0004。 */
+  readonly priceDecimalSeparator: '.' | ',';
+  readonly priceGroupSeparator: ',' | '.';
 }
 
 /**
- * Marketplace 注册表：Phase 2 会扩展 .co.jp / .de / .cn / .co.uk 等。
- * 新增站点走"加一条记录 + 加一组 Parser"两步，不改核心。
+ * Marketplace 注册表（ADR-0004）：新增站点 = 注册表加一条记录 + 必要时加一组 Parser 分支。
+ * 数字解析收口在 Node 侧 parsePriceNum（parser/search-page.ts），浏览器侧只取原始文本。
  */
 export const MARKETPLACES: Record<MarketplaceId, Marketplace> = {
   com: {
@@ -22,6 +25,40 @@ export const MARKETPLACES: Record<MarketplaceId, Marketplace> = {
     host: 'www.amazon.com',
     currency: 'USD',
     locale: 'en-US',
+    priceDecimalSeparator: '.',
+    priceGroupSeparator: ',',
+  },
+  cojp: {
+    id: 'cojp',
+    host: 'www.amazon.co.jp',
+    currency: 'JPY',
+    locale: 'ja-JP',
+    priceDecimalSeparator: '.',
+    priceGroupSeparator: ',',
+  },
+  de: {
+    id: 'de',
+    host: 'www.amazon.de',
+    currency: 'EUR',
+    locale: 'de-DE',
+    priceDecimalSeparator: ',',
+    priceGroupSeparator: '.',
+  },
+  cn: {
+    id: 'cn',
+    host: 'www.amazon.cn',
+    currency: 'CNY',
+    locale: 'zh-CN',
+    priceDecimalSeparator: '.',
+    priceGroupSeparator: ',',
+  },
+  couk: {
+    id: 'couk',
+    host: 'www.amazon.co.uk',
+    currency: 'GBP',
+    locale: 'en-GB',
+    priceDecimalSeparator: '.',
+    priceGroupSeparator: ',',
   },
 };
 

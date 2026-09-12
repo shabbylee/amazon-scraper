@@ -88,6 +88,12 @@ describe('loadConfig', () => {
     );
   });
 
+  it('accepts the extended Phase 2 marketplaces', () => {
+    expect(loadConfig(opts({ DEFAULT_MARKETPLACE: 'de' })).defaultMarketplace).toBe('de');
+    expect(loadConfig(opts({ DEFAULT_MARKETPLACE: 'cojp' })).defaultMarketplace).toBe('cojp');
+    expect(loadConfig(opts({ DEFAULT_MARKETPLACE: 'couk' })).defaultMarketplace).toBe('couk');
+  });
+
   it('treats HEADLESS=false (any case) as headed mode', () => {
     expect(loadConfig(opts({ HEADLESS: 'false' })).headless).toBe(false);
     expect(loadConfig(opts({ HEADLESS: 'FALSE' })).headless).toBe(false);

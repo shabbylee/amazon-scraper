@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { toListings } from './search-page.js';
+import { MARKETPLACES, type MarketplaceId } from '../types.js';
+import { parsePriceNum, toListings } from './search-page.js';
 
 describe('toListings', () => {
   it('converts raw browser items into typed Listings bound to a marketplace', () => {
@@ -61,7 +62,7 @@ describe('toListings', () => {
     expect(listing?.priceNum).toBeNull();
   });
 
-  it('coerces non-finite numbers to null for rating and priceNum', () => {
+  it('coerces non-finite numbers to null for rating, and parses priceNum from text', () => {
     const raw = [
       {
         asin: 'B0WEIRD0001',
@@ -74,8 +75,48 @@ describe('toListings', () => {
       },
     ];
     const [listing] = toListings(raw, 'com');
-    expect(listing?.priceNum).toBeNull();
+    expect(listing?.priceNum).toBe(1); // 来自 priceText，忽略 raw priceNum
     expect(listing?.rating).toBeNull();
     expect(listing?.image).toBeNull();
+  });
+});
+
+describe('parsePriceNum (per-marketplace formats, ADR-0004)', () => {
+  it.each<[MarketplaceId, string, number | null]>([
+    ['com', '$249.00', 249],
+    ['com', '$1,299.00', 1299],
+    ['cojp', '￥1,234', 1234],
+    ['cn', '¥899.00', 899],
+    ['couk', '£1,099.00', 1099],
+    ['de', 'EUR 12,99', 12.99],
+    ['de', '1.234,56 €', 1234.56],
+    ['com', '', null],
+    ['de', '没有标记价格或即将推出', null],
+    ['com', 'not a price', null],
+  ])('%s parses "%s" → %j', (id, text, expected) => {
+    expect(parsePriceNum(text, MARKETPLACES[id])).toBe(expected);
+  });
+});
+
+describe('toListings across marketplaces', () => {
+  it('binds listings to the requested marketplace host and parses its price format', () => {
+    const raw = [
+      {
+        asin: 'B0DE0000001',
+        title: 'Produkt',
+        priceText: 'EUR 12,99',
+        hasPrice: true,
+        image: null,
+        rating: 4.5,
+      },
+    ];
+    const [listing] = toListings(raw, 'de');
+    expect(listing).toMatchObject({
+      marketplace: 'de',
+      href: 'https://www.amazon.de/dp/B0DE0000001',
+      priceText: 'EUR 12,99',
+      priceNum: 12.99,
+      rating: 4.5,
+    });
   });
 });

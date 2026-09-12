@@ -34,6 +34,15 @@ describe('buildSearchUrl', () => {
     });
     expect(url).toContain('k=a%26b%3Dc');
   });
+
+  it('scopes the URL to the marketplace host', () => {
+    const url = buildSearchUrl({
+      keyword: 'laptop',
+      page: 2,
+      marketplace: MARKETPLACES.de,
+    });
+    expect(url.startsWith('https://www.amazon.de/s?')).toBe(true);
+  });
 });
 
 describe('classifyError', () => {

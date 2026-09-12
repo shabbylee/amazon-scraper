@@ -254,6 +254,16 @@
   <div class="search-bar">
     <input id="keyword" type="text" placeholder="输入关键字，如 laptop、gaming laptop、MacBook..." value="laptop" />
     <div class="select-wrap">
+      <span>站点</span>
+      <select id="marketplace">
+        <option value="com">Amazon.com (美国)</option>
+        <option value="cojp">Amazon.co.jp (日本)</option>
+        <option value="de">Amazon.de (德国)</option>
+        <option value="cn">Amazon.cn (中国)</option>
+        <option value="couk">Amazon.co.uk (英国)</option>
+      </select>
+    </div>
+    <div class="select-wrap">
       <span>页数</span>
       <select id="pages">
         <option value="1">1 页</option>
@@ -305,6 +315,7 @@
 
 <script>
 const keywordEl = document.getElementById('keyword');
+const marketplaceEl = document.getElementById('marketplace');
 const pagesEl = document.getElementById('pages');
 const goBtn = document.getElementById('go');
 const loadingEl = document.getElementById('loading');
@@ -328,7 +339,7 @@ function renderStats(data) {
     </div>
     <div class="stat-card">
       <div class="label">来源</div>
-      <div class="value amber">amazon · ${data.pagesScraped} 页</div>
+      <div class="value amber">amazon.${data.marketplace} · ${data.pagesScraped} 页</div>
     </div>
     <div class="stat-card">
       <div class="label">有价格</div>
@@ -473,18 +484,19 @@ async function go() {
   const keyword = keywordEl.value.trim();
   if (!keyword) { keywordEl.focus(); return; }
   const pages = parseInt(pagesEl.value, 10);
+  const marketplace = marketplaceEl.value;
 
   goBtn.disabled = true;
   emptyEl.style.display = 'none';
   resultsEl.style.display = 'none';
   loadingEl.classList.add('active');
-  loadingTextEl.textContent = `正在打开浏览器并抓取 " ${keyword} "（${pages} 页），请稍候...`;
+  loadingTextEl.textContent = `正在打开浏览器并抓取 " ${keyword} "（amazon.${marketplace}，${pages} 页），请稍候...`;
 
   try {
     const res = await fetch('/api/scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keyword, pages }),
+      body: JSON.stringify({ keyword, pages, marketplace }),
     });
     if (!res.ok) throw new Error(`服务器错误：${res.status}`);
     const data = await res.json();
