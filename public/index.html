@@ -914,7 +914,8 @@ function renderVariants(variants) {
 
 function renderGallery(images) {
   if (!images || !images.length) return '';
-  const imgs = images.slice(0, 12).map(src => `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.style.opacity=.3"/>`).join('');
+  // 不用 loading="lazy"：模态框画廊图片少，lazy 会导致刚打开时白块（延迟加载）
+  const imgs = images.slice(0, 12).map(src => `<img src="${esc(src)}" alt="" decoding="async" onerror="this.style.opacity=.3"/>`).join('');
   return `<div class="detail-section"><h3>图片画廊 (${images.length})</h3><div class="gallery">${imgs}</div></div>`;
 }
 
