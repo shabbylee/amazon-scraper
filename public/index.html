@@ -647,7 +647,7 @@ function renderDetail(d) {
     </div>
   `;
   document.getElementById('detail-close').addEventListener('click', hideDetail);
-  document.getElementById('detail-history').addEventListener('click', () => showHistory(d.asin, d.marketplace));
+  document.getElementById('detail-history').addEventListener('click', () => showHistory(d.asin, d.marketplace, 30));
 }
 
 async function showDetail(asin, marketplace) {
@@ -765,21 +765,36 @@ function renderHistorySvg(points) {
     </svg>`;
 }
 
-async function showHistory(asin, marketplace) {
+async function showHistory(asin, marketplace, days) {
   const card = detailCard;
   card.querySelectorAll('.hist-block').forEach(el => el.remove());
   const block = document.createElement('div');
   block.className = 'hist-block';
   block.innerHTML = '<div class="hint">加载价格历史…</div>';
   card.appendChild(block);
+  await renderHistory(block, asin, marketplace, days);
+}
+
+async function renderHistory(block, asin, marketplace, days) {
   try {
-    const res = await fetch(`/api/history?asin=${encodeURIComponent(asin)}&marketplace=${encodeURIComponent(marketplace)}&days=30`);
+    const res = await fetch(`/api/history?asin=${encodeURIComponent(asin)}&marketplace=${encodeURIComponent(marketplace)}&days=${days}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     const pts = data.points || [];
     block.innerHTML =
-      `<div style="font-size:12px;font-weight:600;margin-bottom:6px;">价格历史（近 ${data.days} 天 · ${pts.length} 个快照）</div>` +
+      `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="font-size:12px;font-weight:600;">价格历史（近 ${data.days} 天 · ${pts.length} 个快照）</span>
+        <select class="hist-days" style="margin-left:auto;font-size:12px;">
+          <option value="7" ${days === 7 ? 'selected' : ''}>7 天</option>
+          <option value="30" ${days === 30 ? 'selected' : ''}>30 天</option>
+          <option value="90" ${days === 90 ? 'selected' : ''}>90 天</option>
+          <option value="365" ${days === 365 ? 'selected' : ''}>365 天</option>
+        </select>
+      </div>` +
       renderHistorySvg(pts);
+    block.querySelector('.hist-days').addEventListener('change', (e) =>
+      renderHistory(block, asin, marketplace, parseInt(e.target.value, 10))
+    );
   } catch (e) {
     block.innerHTML = `<div class="detail-error">历史加载失败：${e.message}</div>`;
   }

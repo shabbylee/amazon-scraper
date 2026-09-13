@@ -50,6 +50,22 @@ const MIGRATIONS: readonly string[] = [
     created_at      TEXT NOT NULL
   );
   `,
+  // v2：Price Alert（ADR-0007）—— Watch 触发时记录的价格变动提醒
+  `
+  CREATE TABLE IF NOT EXISTS price_alerts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    watch_id     INTEGER NOT NULL,
+    keyword      TEXT NOT NULL,
+    marketplace  TEXT NOT NULL,
+    asin         TEXT NOT NULL,
+    from_price   REAL,
+    to_price     REAL,
+    delta_pct    REAL NOT NULL,
+    created_at   TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_alerts_watch
+    ON price_alerts(watch_id, created_at);
+  `,
 ];
 
 export function initSchema(db: Database): void {

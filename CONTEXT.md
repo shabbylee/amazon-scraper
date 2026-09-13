@@ -53,6 +53,10 @@ _Avoid_: 价格记录、历史、price history
 用户订阅的 `(Keyword, Marketplace, Schedule)` 组合，用于周期性触发 Scrape Job 并在价格变化时提醒。Watch 是"持久化 + 定时"阶段的入口概念。
 _Avoid_: 订阅、监控、追踪、alert
 
+**Price Alert**:
+Watch 触发后，某 Listing 价格变动幅度超过阈值时生成的一条提醒记录，含 `(Watch 键, Listing 键, From 价格, To 价格, DeltaPct, 时间)`，经 Webhook 发送。提醒只记录变动，不记录无变动。
+_Avoid_: 通知、消息、price change event（口语化）
+
 **Parser**:
 纯函数模块，把 Marketplace 页面 DOM 转成 Listing / Snapshot 领域对象。**不做 IO、不启动浏览器、不重试**，只解析已获取的 DOM 快照。每个 Marketplace 一组 Parser。
 _Avoid_: extractor、解析器、scraper（scraper 是更上层的编排）

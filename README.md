@@ -59,6 +59,8 @@ docker compose up --build
 | `RETRY_BACKOFF_MS` | `3000` | 可重试失败后的退避（毫秒）。**硬下限 2000**，配低了会被夹紧 |
 | `PROXIES` | 空 | 逗号分隔的代理 URL，支持 `http://user:pass@host:port` 认证。1 个 = 按 Job 轮换；≥2 个自动升级为每 Attempt 轮换（ADR-0003）。留空 = 直连 |
 | `DB_PATH` | `data/amazon.db` | SQLite 数据库路径（ADR-0006）；`:memory:` = 进程内临时库（测试用） |
+| `WATCH_WEBHOOK_URL` | 空 | Watch 价格变动提醒 Webhook URL（ADR-0007）；留空 = 不发送提醒 |
+| `WATCH_PRICE_CHANGE_PCT` | `1` | 提醒阈值（百分比，夹紧 [0.01, 100]）：涨跌超过该值才触发 Webhook |
 
 后两个硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。
 
@@ -84,14 +86,16 @@ amazon-scraper/
 │   │   ├── 0002-typescript-migration.md
 │   │   ├── 0003-proxy-pool.md
 │   │   ├── 0004-marketplace-registry.md
-│   │   └── 0005-product-detail.md
+│   │   ├── 0005-product-detail.md
+│   │   └── 0006-persistence.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
-├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail / persistence）
+├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail / persistence / price-alert）
 ├── src/
 │   ├── index.ts              # 入口：loadConfig → createStore → createApp → listen + scheduler + graceful shutdown
 │   ├── app.ts                # createApp 工厂（可脱离 listen 单测）
 │   ├── config.ts             # AppConfig + loadConfig；夹紧 AGENTS.md 硬约束
-│   ├── scheduler.ts          # Watch 调度器（60s tick 扫描到期 Watch → runSearchJob → 落库）
+│   ├── scheduler.ts          # Watch 调度器（60s tick：抓取 → 落库 → 价格提醒 → 标记 last_run_at）
+│   ├── alerts.ts             # Price Alert：buildPriceAlerts + deliverAlert + persistAlert（ADR-0007）
 │   ├── types.ts              # Marketplace / Listing / ProductDetail / ScrapeJob / AttemptSummary / FailureClass
 │   ├── db/
 │   │   ├── schema.ts         # SQLite 建表/迁移（user_version）
@@ -284,6 +288,24 @@ GET    /api/watch
 DELETE /api/watch/:id
 ```
 
+### 价格变动提醒 Webhook（ADR-0007）
+
+配置 `WATCH_WEBHOOK_URL` 后，每次 Watch 完成抓取，对**有价格**且已有历史快照的商品对比最近两次价格：变动幅度 ≥ `WATCH_PRICE_CHANGE_PCT`（默认 1%）即 POST 一个 JSON 载荷到该 URL，同时落库 `price_alerts` 表：
+
+```json
+{
+  "event": "price_change",
+  "watch": { "id": 1, "keyword": "laptop", "marketplace": "com" },
+  "listing": { "asin": "B09S3HNMHF", "title": "…", "href": "https://www.amazon.com/dp/B09S3HNMHF" },
+  "from": { "priceText": "CNY 1,536.22", "priceNum": 1536.22 },
+  "to": { "priceText": "CNY 1,490.00", "priceNum": 1490 },
+  "deltaPct": -3.01,
+  "capturedAt": "2026-09-13T00:00:00.000Z"
+}
+```
+
+`deltaPct` 为有符号百分比（负 = 降价）。Webhook 可接 Mailgun / Zapier / 企业微信机器人 / Slack 等把 JSON 转发成邮件或通知；发送失败只记日志，不影响后续调度（提醒已落库可审计）。
+
 ## 持久化（ADR-0006）
 
 SQLite 单文件（默认 `data/amazon.db`），三张表：
@@ -304,8 +326,8 @@ SQLite 单文件（默认 `data/amazon.db`），三张表：
 - **点击排序**：点击表头按价格或评分排序
 - **星级展示**：5 星可视化 + 阿拉伯数字
 - **商品详情**：行内"详情"按钮 → Buy Box 卡片（价格/卖家/运费/Prime/库存/变体/评论数）
-- **价格历史**：详情卡片的"价格历史"按钮 → SVG 趋势图（零依赖手绘）
-- **Watch 面板**：添加/删除定时监控，展示上次运行时间
+- **价格历史**：详情卡片的"价格历史"按钮 → SVG 趋势图（零依赖手绘），支持 7/30/90/365 天切换
+- **Watch 面板**：添加/删除定时监控，展示上次运行时间；价格变动超阈值自动发 Webhook
 - **跳转链接**：直接打开对应站点的 Amazon 商品页
 - **CSV 导出**：带 UTF-8 BOM 的 CSV（Excel 友好）
 

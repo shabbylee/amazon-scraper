@@ -16,6 +16,7 @@ export function healthHandler(config: AppConfig): RequestHandler {
       retryMaxAttempts: config.retryMaxAttempts,
       retryBackoffMs: config.retryBackoffMs,
       proxyPoolSize: config.proxies.length,
+      webhookEnabled: Boolean(config.watchWebhookUrl),
     });
   };
 }

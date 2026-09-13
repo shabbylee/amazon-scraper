@@ -22,6 +22,18 @@ export interface WatchRecord {
   readonly createdAt: string;
 }
 
+export interface PriceAlertRecord {
+  readonly id: number;
+  readonly watchId: number;
+  readonly keyword: string;
+  readonly marketplace: MarketplaceId;
+  readonly asin: string;
+  readonly fromPrice: number | null;
+  readonly toPrice: number | null;
+  readonly deltaPct: number;
+  readonly createdAt: string;
+}
+
 export type ListingSort = 'price-asc' | 'price-desc' | 'rating' | 'updated';
 
 export interface Persistence {
@@ -29,6 +41,10 @@ export interface Persistence {
   saveScrapeResult(marketplace: MarketplaceId, listings: readonly Listing[]): number;
   saveDetail(detail: ProductDetail): void;
   getHistory(marketplace: MarketplaceId, asin: string, days: number): readonly PricePoint[];
+  /** 最近 N 条价格快照（时间升序），用于 Watch 触发后的价格对比（ADR-0007）。 */
+  getRecentSnapshots(marketplace: MarketplaceId, asin: string, limit: number): readonly PricePoint[];
+  /** 记录一条 Price Alert；返回 id。 */
+  insertAlert(alert: Omit<PriceAlertRecord, 'id' | 'createdAt'>): number;
   searchListings(opts: {
     keyword?: string;
     marketplace?: MarketplaceId;
@@ -209,6 +225,43 @@ export class SqlitePersistence implements Persistence {
       currency: string | null;
     }>;
     return rows;
+  }
+
+  getRecentSnapshots(marketplace: MarketplaceId, asin: string, limit: number): readonly PricePoint[] {
+    const rows = this.db
+      .prepare(
+        `SELECT captured_at AS capturedAt, price_text AS priceText, price_num AS priceNum, currency
+         FROM price_snapshots
+         WHERE marketplace = ? AND asin = ?
+         ORDER BY captured_at DESC
+         LIMIT ?`
+      )
+      .all(marketplace, asin, limit) as Array<{
+      capturedAt: string;
+      priceText: string | null;
+      priceNum: number | null;
+      currency: string | null;
+    }>;
+    return rows.reverse();
+  }
+
+  insertAlert(alert: Omit<PriceAlertRecord, 'id' | 'createdAt'>): number {
+    const info = this.db
+      .prepare(
+        `INSERT INTO price_alerts (watch_id, keyword, marketplace, asin, from_price, to_price, delta_pct, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        alert.watchId,
+        alert.keyword,
+        alert.marketplace,
+        alert.asin,
+        alert.fromPrice,
+        alert.toPrice,
+        alert.deltaPct,
+        new Date().toISOString()
+      );
+    return Number(info.lastInsertRowid);
   }
 
   searchListings(opts: {

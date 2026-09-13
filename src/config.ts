@@ -53,6 +53,10 @@ export interface AppConfig {
   readonly proxies: readonly string[];
   /** SQLite 数据库文件路径（ADR-0006）；默认 <projectRoot>/data/amazon.db。 */
   readonly dbPath: string;
+  /** Watch 价格变动提醒 Webhook URL（ADR-0007）；空 = 不发送提醒。 */
+  readonly watchWebhookUrl: string | null;
+  /** 触发提醒的价格变动阈值（百分比，夹紧 [0.01, 100]），默认 1%。 */
+  readonly watchPriceChangePct: number;
   readonly publicDir: string;
   readonly projectRoot: string;
 }
@@ -107,6 +111,14 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     ? dbPathRaw
     : path.join(PROJECT_ROOT, 'data', 'amazon.db');
 
+  const webhookRaw = read('WATCH_WEBHOOK_URL')?.trim();
+  const watchWebhookUrl = webhookRaw && webhookRaw.length > 0 ? webhookRaw : null;
+
+  const changePctRaw = Number.parseFloat(read('WATCH_PRICE_CHANGE_PCT') ?? '1');
+  const watchPriceChangePct = Number.isFinite(changePctRaw)
+    ? Math.min(Math.max(changePctRaw, 0.01), 100)
+    : 1;
+
   return {
     port,
     headless,
@@ -130,6 +142,8 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     ),
     proxies,
     dbPath,
+    watchWebhookUrl,
+    watchPriceChangePct,
     publicDir: path.join(PROJECT_ROOT, 'public'),
     projectRoot: PROJECT_ROOT,
   };
