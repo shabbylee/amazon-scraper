@@ -16,8 +16,6 @@ README.md
 docs
 AGENTS.md
 CONTEXT.md
-tsconfig.json
-tsconfig.build.json
 vitest.config.ts
 .prettierrc.json
 src/**/*.test.ts

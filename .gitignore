@@ -12,6 +12,8 @@ coverage/
 dist/
 
 # Phase 4 起：本地数据库
+data/
+!data/.gitkeep
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal

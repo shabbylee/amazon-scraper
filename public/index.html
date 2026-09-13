@@ -425,15 +425,15 @@ function renderStats(data) {
     </div>
     <div class="stat-card">
       <div class="label">最低</div>
-      <div class="value green">${data.minPrice || '—'}</div>
+      <div class="value green">${esc(data.minPrice || '—')}</div>
     </div>
     <div class="stat-card">
       <div class="label">最高</div>
-      <div class="value amber">${data.maxPrice || '—'}</div>
+      <div class="value amber">${esc(data.maxPrice || '—')}</div>
     </div>
     <div class="stat-card">
       <div class="label">平均</div>
-      <div class="value">${data.avgPrice || '—'}</div>
+      <div class="value">${esc(data.avgPrice || '—')}</div>
     </div>
     <div class="stat-card">
       <div class="label">已保存到本地库</div>
@@ -464,13 +464,13 @@ function sortItems(items) {
   const arr = [...items];
   const { key, dir } = sortState;
   if (key === 'price') {
-    arr.sort((a, b) => (a.priceNum || Infinity) * dir - (b.priceNum || Infinity) * dir);
+    arr.sort((a, b) => (a.priceNum ?? Infinity) * dir - (b.priceNum ?? Infinity) * dir);
   } else if (key === 'rating') {
-    arr.sort((a, b) => (b.rating ?? 0) * dir - (a.rating ?? 0) * dir);
+    arr.sort((a, b) => ((b.rating ?? 0) - (a.rating ?? 0)) * dir);
   } else if (key === 'name') {
     arr.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN') * dir);
   } else if (key === 'none') {
-    arr.sort((a, b) => (a.priceNum || Infinity) - (b.priceNum || Infinity));
+    arr.sort((a, b) => (a.priceNum ?? Infinity) - (b.priceNum ?? Infinity));
   }
   return arr;
 }
@@ -479,6 +479,15 @@ function filterItems() {
   if (currentFilter === 'price') return rawItems.filter(x => x.hasPrice);
   if (currentFilter === 'noprice') return rawItems.filter(x => !x.hasPrice);
   return rawItems;
+}
+
+function esc(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function ratingStars(v) {
@@ -496,42 +505,43 @@ function renderTable() {
   tbodyEl.innerHTML = items.map((x, i) => `
     <tr>
       <td class="col-img">
-        ${x.image ? `<img src="${x.image}" alt="" loading="lazy" onerror="this.style.opacity=.4"/>` : ''}
+        ${x.image ? `<img src="${esc(x.image)}" alt="" loading="lazy" onerror="this.style.opacity=.4"/>` : ''}
       </td>
       <td class="col-title">
-        <a href="${x.href}" target="_blank" rel="noopener" title="${x.title}">${x.title || '—'}</a>
+        <a href="${esc(x.href)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title) || '—'}</a>
       </td>
       <td class="col-price">
         ${x.hasPrice
-          ? `<span class="price-num">${x.priceText}</span>`
-          : `<span class="price-na">${x.priceText}</span>`}
+          ? `<span class="price-num">${esc(x.priceText)}</span>`
+          : `<span class="price-na">${esc(x.priceText)}</span>`}
       </td>
       <td class="col-rating">
         <div class="rating-bar">${ratingStars(x.rating)}</div>
       </td>
       <td class="col-link">
-        <a href="${x.href}" target="_blank" rel="noopener">打开 →</a>
-        <button class="mini-btn detail-btn" data-asin="${x.asin || ''}">详情</button>
+        <a href="${esc(x.href)}" target="_blank" rel="noopener">打开 →</a>
+        <button class="mini-btn detail-btn" data-asin="${esc(x.asin || '')}">详情</button>
       </td>
     </tr>
   `).join('');
-
-  document.querySelectorAll('th[data-sort], th[data-sort="none"]').forEach(th => {
-    const k = th.dataset.sort;
-    if (k === 'none') return;
-    th.addEventListener('click', () => {
-      if (sortState.key === k) {
-        sortState.dir *= -1;
-      } else {
-        sortState.key = k;
-        sortState.dir = 1;
-      }
-      document.querySelectorAll('th').forEach(t => t.classList.remove('sorted'));
-      th.classList.add('sorted');
-      renderTable();
-    });
-  });
 }
+
+// 排序：事件委托绑在 thead 上只绑一次（修 renderTable 每次重绑导致 listener 指数膨胀的 bug）
+document.querySelector('#tbl thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const k = th.dataset.sort;
+  if (k === 'none') return;
+  if (sortState.key === k) {
+    sortState.dir *= -1;
+  } else {
+    sortState.key = k;
+    sortState.dir = 1;
+  }
+  document.querySelectorAll('#tbl th').forEach(t => t.classList.remove('sorted'));
+  th.classList.add('sorted');
+  renderTable();
+});
 
 function exportCSV() {
   const items = filterItems();
@@ -627,23 +637,23 @@ function renderDetail(d) {
   detailCard.innerHTML = `
     <button id="detail-close" aria-label="关闭">×</button>
     <div class="detail-head">
-      ${d.image ? `<img src="${d.image}" alt="" onerror="this.style.display='none'"/>` : ''}
+      ${d.image ? `<img src="${esc(d.image)}" alt="" onerror="this.style.display='none'"/>` : ''}
       <div>
-        <div class="detail-title">${d.title || '—'}</div>
+        <div class="detail-title">${esc(d.title) || '—'}</div>
         <div class="detail-meta">${ratingStars(d.rating)}${d.reviewCount != null ? ` · ${d.reviewCount.toLocaleString()} 条评价` : ''}</div>
       </div>
     </div>
     <div class="detail-grid">
-      <div><div class="lbl">Buy Box 价格</div><div class="price-num">${b.hasBuyBox ? b.priceText : '—'}</div></div>
-      <div><div class="lbl">卖家</div><div>${b.sellerName || '—'}</div></div>
-      <div><div class="lbl">运费</div><div>${b.shippingText || '—'}</div></div>
+      <div><div class="lbl">Buy Box 价格</div><div class="price-num">${b.hasBuyBox ? esc(b.priceText) : '—'}</div></div>
+      <div><div class="lbl">卖家</div><div>${esc(b.sellerName) || '—'}</div></div>
+      <div><div class="lbl">运费</div><div>${esc(b.shippingText) || '—'}</div></div>
       <div><div class="lbl">Prime</div><div>${b.isPrime ? '✓' : '—'}</div></div>
       <div><div class="lbl">库存</div><div>${b.inStock ? '有货' : '无货'}</div></div>
     </div>
-    ${d.variants && d.variants.length ? `<div class="detail-variants">变体：${d.variants.join(' / ')}</div>` : ''}
+    ${d.variants && d.variants.length ? `<div class="detail-variants">变体：${d.variants.map(esc).join(' / ')}</div>` : ''}
     <div style="margin-top:12px;text-align:right;">
       <button class="mini-btn" id="detail-history">价格历史</button>
-      <a class="mini-btn" href="${d.href || '#'}" target="_blank" rel="noopener">打开商品页 →</a>
+      <a class="mini-btn" href="${esc(d.href || '#')}" target="_blank" rel="noopener">打开商品页 →</a>
     </div>
   `;
   document.getElementById('detail-close').addEventListener('click', hideDetail);
