@@ -134,6 +134,140 @@ describe('searchListings', () => {
   });
 });
 
+describe('detail field preservation', () => {
+  const colorVariants: ProductDetail['variants'] = [
+    {
+      name: 'color_name',
+      title: 'Color',
+      options: [
+        { asin: 'B0VAR00001', label: 'Black', priceText: null, priceNum: null, currency: null, unavailable: false },
+        { asin: 'B0VAR00002', label: 'White', priceText: null, priceNum: null, currency: null, unavailable: false },
+      ],
+    },
+  ];
+
+  interface DetailRow {
+    variants: string | null;
+    seller_name: string | null;
+    shipping_text: string | null;
+    review_count: number | null;
+    has_buy_box: number;
+    is_prime: number;
+    in_stock: number;
+    price_num: number | null;
+  }
+
+  const readRow = (asin: string): DetailRow => {
+    const row = db
+      .prepare(
+        `SELECT variants, seller_name, shipping_text, review_count,
+                has_buy_box, is_prime, in_stock, price_num
+         FROM listings WHERE asin = ?`
+      )
+      .get(asin) as DetailRow | undefined;
+    if (!row) throw new Error(`listing ${asin} not found`);
+    return row;
+  };
+
+  const detailWith = (asin: string, variants: ProductDetail['variants']): ProductDetail => ({
+    marketplace: 'com',
+    asin,
+    href: `https://www.amazon.com/dp/${asin}`,
+    title: 'Variant Item',
+    image: null,
+    rating: 4.2,
+    reviewCount: 99,
+    buyBox: {
+      hasBuyBox: true,
+      priceText: '$88.00',
+      priceNum: 88,
+      sellerName: 'Amazon.com',
+      shippingText: 'FREE delivery',
+      isPrime: true,
+      inStock: true,
+    },
+    variants,
+  });
+
+  it('keeps variants when a later search scrape carries none', () => {
+    store.saveDetail(detailWith('B0VAR00001', colorVariants));
+    expect(readRow('B0VAR00001').variants).toBe(JSON.stringify(colorVariants));
+
+    // 搜索路径不携带变体；重跑 collect 时不能抹掉已观测到的变体结构
+    store.saveScrapeResult('com', [listing('B0VAR00001', '$88.00', 88)]);
+    expect(readRow('B0VAR00001').variants).toBe(JSON.stringify(colorVariants));
+  });
+
+  it('keeps variants when a later detail scrape observes none', () => {
+    store.saveDetail(detailWith('B0VAR00002', colorVariants));
+    // 详情返回空数组表示"本次未观测到变体"，不是"确认无变体"：parser 无法区分空页面与选择器未命中
+    store.saveDetail(detailWith('B0VAR00002', []));
+    expect(readRow('B0VAR00002').variants).toBe(JSON.stringify(colorVariants));
+  });
+
+  it('overwrites variants when a later detail scrape observes a new set', () => {
+    store.saveDetail(detailWith('B0VAR00003', colorVariants));
+    const sizeVariants: ProductDetail['variants'] = [
+      {
+        name: 'size_name',
+        title: 'Size',
+        options: [
+          { asin: 'B0VAR00003', label: '13-inch', priceText: null, priceNum: null, currency: null, unavailable: false },
+        ],
+      },
+    ];
+    store.saveDetail(detailWith('B0VAR00003', sizeVariants));
+    expect(readRow('B0VAR00003').variants).toBe(JSON.stringify(sizeVariants));
+  });
+
+  it('search re-scrape preserves every detail-only field', () => {
+    store.saveDetail(detailWith('B0VAR00004', colorVariants));
+
+    // 重跑 collect 的搜索阶段：只带搜索结果字段
+    store.saveScrapeResult('com', [listing('B0VAR00004', '$99.00', 99)]);
+
+    const row = readRow('B0VAR00004');
+    // 详情专属字段全部保留（含 NOT NULL 的布尔列，它们写 0 与"观测到 false"不可区分）
+    expect(row.variants).toBe(JSON.stringify(colorVariants));
+    expect(row.seller_name).toBe('Amazon.com');
+    expect(row.shipping_text).toBe('FREE delivery');
+    expect(row.review_count).toBe(99);
+    expect(row.has_buy_box).toBe(1);
+    expect(row.is_prime).toBe(1);
+    expect(row.in_stock).toBe(1);
+    // 但搜索能观测到的字段仍须更新
+    expect(row.price_num).toBe(99);
+  });
+
+  it('detail re-scrape keeps previously observed optional fields when absent', () => {
+    store.saveDetail(detailWith('B0VAR00005', colorVariants));
+
+    // 详情页未展示卖家/配送/评论数（parser 写 null），不应清掉上一次的观测值
+    store.saveDetail({
+      ...detailWith('B0VAR00005', colorVariants),
+      reviewCount: null,
+      buyBox: {
+        hasBuyBox: false,
+        priceText: '无价格',
+        priceNum: null,
+        sellerName: '',
+        shippingText: '',
+        isPrime: false,
+        inStock: false,
+      },
+    });
+
+    const row = readRow('B0VAR00005');
+    expect(row.seller_name).toBe('Amazon.com');
+    expect(row.shipping_text).toBe('FREE delivery');
+    expect(row.review_count).toBe(99);
+    // 这三个是详情路径的真实观测（false 也是观测），照常覆盖
+    expect(row.has_buy_box).toBe(0);
+    expect(row.is_prime).toBe(0);
+    expect(row.in_stock).toBe(0);
+  });
+});
+
 describe('watches', () => {
   it('creates, lists, deletes and computes due watches', () => {
     const w = store.createWatch({ keyword: 'laptop', marketplace: 'com', intervalMinutes: 60 });

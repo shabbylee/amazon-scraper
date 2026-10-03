@@ -109,13 +109,28 @@ const toListing = (r: ListingRow): Listing => ({
 
 export class SqlitePersistence implements Persistence {
   private readonly db: Database;
-  private readonly upsertListing;
+  private readonly upsertFromSearch;
+  private readonly upsertFromDetail;
   private readonly insertSnapshot;
   private readonly insertWatch;
 
   constructor(db: Database) {
     this.db = db;
-    this.upsertListing = this.db.prepare(`
+    // 搜索与详情各自持有一条 upsert：搜索只覆盖搜索结果能观测到的字段，
+    // 详情专属字段（变体 / 卖家 / Prime / 库存 / Buy Box / 评论数）只由详情写入。
+    // 否则重跑采集时搜索阶段会先把整套详情数据清零，详情抓取一旦中断即永久丢失。
+    this.upsertFromSearch = this.db.prepare(`
+    INSERT INTO listings (marketplace, asin, title, href, image, rating,
+      price_text, price_num, currency, updated_at)
+    VALUES (@marketplace, @asin, @title, @href, @image, @rating,
+      @priceText, @priceNum, @currency, @updatedAt)
+    ON CONFLICT(marketplace, asin) DO UPDATE SET
+      title = excluded.title, href = excluded.href, image = excluded.image,
+      rating = excluded.rating, price_text = excluded.price_text,
+      price_num = excluded.price_num, currency = excluded.currency,
+      updated_at = excluded.updated_at
+  `);
+    this.upsertFromDetail = this.db.prepare(`
     INSERT INTO listings (marketplace, asin, title, href, image, rating, review_count,
       price_text, price_num, currency, has_buy_box, seller_name, shipping_text,
       is_prime, in_stock, variants, updated_at)
@@ -124,12 +139,17 @@ export class SqlitePersistence implements Persistence {
       @isPrime, @inStock, @variants, @updatedAt)
     ON CONFLICT(marketplace, asin) DO UPDATE SET
       title = excluded.title, href = excluded.href, image = excluded.image,
-      rating = excluded.rating, review_count = excluded.review_count,
+      rating = excluded.rating,
+      -- 详情路径写 NULL/空表示"本次未观测到"，不是"确认不存在"：parser 无法区分
+      -- 页面确实无此字段与选择器未命中，因此保守保留上一次已观测值。
+      review_count = COALESCE(excluded.review_count, listings.review_count),
       price_text = excluded.price_text, price_num = excluded.price_num,
       currency = excluded.currency, has_buy_box = excluded.has_buy_box,
-      seller_name = excluded.seller_name, shipping_text = excluded.shipping_text,
+      seller_name = COALESCE(excluded.seller_name, listings.seller_name),
+      shipping_text = COALESCE(excluded.shipping_text, listings.shipping_text),
       is_prime = excluded.is_prime, in_stock = excluded.in_stock,
-      variants = excluded.variants, updated_at = excluded.updated_at
+      variants = COALESCE(excluded.variants, listings.variants),
+      updated_at = excluded.updated_at
   `);
     this.insertSnapshot = this.db.prepare(`
     INSERT INTO price_snapshots (marketplace, asin, price_text, price_num, currency, captured_at)
@@ -148,23 +168,16 @@ export class SqlitePersistence implements Persistence {
       let saved = 0;
       for (const l of items) {
         const currency = l.priceNum !== null ? extractCurrency(l.priceText, marketplace) : null;
-        this.upsertListing.run({
+        this.upsertFromSearch.run({
           marketplace,
           asin: l.asin,
           title: l.title,
           href: l.href,
           image: l.image,
           rating: l.rating,
-          reviewCount: null,
           priceText: l.hasPrice ? l.priceText : null,
           priceNum: l.priceNum,
           currency,
-          hasBuyBox: 0,
-          sellerName: null,
-          shippingText: null,
-          isPrime: 0,
-          inStock: 0,
-          variants: null,
           updatedAt: now,
         });
         this.insertSnapshot.run(marketplace, l.asin, l.hasPrice ? l.priceText : null, l.priceNum, currency, now);
@@ -179,7 +192,7 @@ export class SqlitePersistence implements Persistence {
     const now = new Date().toISOString();
     const b = detail.buyBox;
     this.db.transaction(() => {
-      this.upsertListing.run({
+      this.upsertFromDetail.run({
         marketplace: detail.marketplace,
         asin: detail.asin,
         title: detail.title,
