@@ -3,6 +3,7 @@ import {
   extractSearchResultsInPage,
   toListings,
 } from '../parser/search-page.js';
+import { toPageScript } from './page-eval.js';
 import { applyProxyAuth } from './proxy-auth.js';
 import type { Proxy } from './proxy.js';
 import { applyStealth } from './stealth.js';
@@ -59,17 +60,23 @@ export function classifyError(err: unknown): FailureClass {
   return 'unknown';
 }
 
-/** 通过 DOM 特征判断是否为 Amazon 反爬 CAPTCHA 页面。 */
+/**
+ * 在浏览器上下文中通过 DOM 特征探测 CAPTCHA 页面。不能引用外部作用域。
+ * 独立成模块级函数，是为了让它与其他提取函数统一走 page-eval 的序列化边界。
+ */
+export function detectCaptchaInPage(): boolean {
+  const title = document.title.toLowerCase();
+  if (title.includes('captcha') || title.includes('robot')) return true;
+  const form = document.querySelector('form[action*="validateCaptcha"]');
+  if (form) return true;
+  const img = document.querySelector('img[src*="captcha"]');
+  return Boolean(img);
+}
+
+/** 通过 DOM 特征判断是否为 Amazon 反爬 CAPTCHA 页面；求值本身失败按"非 CAPTCHA"降级。 */
 export async function isCaptchaPage(page: Page): Promise<boolean> {
   try {
-    return await page.evaluate(() => {
-      const title = document.title.toLowerCase();
-      if (title.includes('captcha') || title.includes('robot')) return true;
-      const form = document.querySelector('form[action*="validateCaptcha"]');
-      if (form) return true;
-      const img = document.querySelector('img[src*="captcha"]');
-      return Boolean(img);
-    });
+    return (await page.evaluate(toPageScript(detectCaptchaInPage))) as boolean;
   } catch {
     return false;
   }
@@ -120,7 +127,9 @@ export async function scrapeSearchPage(
       .waitForSelector('[data-component-type="s-search-result"]', { timeout: selectorTimeout })
       .catch(() => undefined);
 
-    const raw = (await page.evaluate(extractSearchResultsInPage)) as readonly unknown[];
+    const raw = (await page.evaluate(
+      toPageScript(extractSearchResultsInPage)
+    )) as readonly unknown[];
     const listings = toListings(raw, deps.marketplace.id);
     if (listings.length === 0) {
       return {

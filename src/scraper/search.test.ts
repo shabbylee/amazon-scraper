@@ -1,3 +1,4 @@
+import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import type { Browser } from 'puppeteer';
 import {
@@ -9,6 +10,7 @@ import {
 import {
   buildSearchUrl,
   classifyError,
+  detectCaptchaInPage,
   isRetryable,
   runSearchJob,
   shouldRetry,
@@ -272,5 +274,37 @@ describe('runSearchJob (retry orchestration)', () => {
     expect(scrapePage).toHaveBeenCalledTimes(2);
     const firstDeps = scrapePage.mock.calls[0]?.[2];
     expect(firstDeps?.proxy).toEqual(proxy);
+  });
+});
+
+describe('detectCaptchaInPage', () => {
+  /** 在带 document stub 的上下文里执行浏览器侧探测函数，等价于页面环境。 */
+  const detect = (doc: unknown): boolean => {
+    const ctx = vm.createContext({ document: doc });
+    const fn = vm.runInContext(`(${detectCaptchaInPage.toString()})`, ctx) as () => boolean;
+    return fn();
+  };
+
+  const makeDoc = (opts: {
+    title?: string;
+    validateCaptchaForm?: boolean;
+    captchaImage?: boolean;
+  }): unknown => ({
+    title: opts.title ?? 'Amazon.com: laptop',
+    querySelector: (selector: string): unknown => {
+      if (selector.includes('validateCaptcha')) return opts.validateCaptchaForm ? {} : null;
+      if (selector.includes('captcha')) return opts.captchaImage ? {} : null;
+      return null;
+    },
+  });
+
+  it.each<[string, unknown, boolean]>([
+    ['标题含 captcha', makeDoc({ title: 'Amazon CAPTCHA' }), true],
+    ['标题含 robot', makeDoc({ title: 'Robot Check' }), true],
+    ['存在 validateCaptcha 表单', makeDoc({ validateCaptchaForm: true }), true],
+    ['存在 captcha 图片', makeDoc({ captchaImage: true }), true],
+    ['普通商品页', makeDoc({}), false],
+  ])('%s → %j', (_name, doc, expected) => {
+    expect(detect(doc)).toBe(expected);
   });
 });

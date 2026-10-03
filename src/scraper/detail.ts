@@ -1,5 +1,6 @@
 import type { Browser, Page } from 'puppeteer';
 import { extractDetailInPage, toDetail } from '../parser/detail-page.js';
+import { toPageScript } from './page-eval.js';
 import type { Proxy } from './proxy.js';
 import { applyProxyAuth } from './proxy-auth.js';
 import { applyStealth } from './stealth.js';
@@ -68,7 +69,7 @@ export async function scrapeDetailPage(
       .waitForSelector('#productTitle', { timeout: selectorTimeout })
       .catch(() => undefined);
 
-    const raw = await page.evaluate(extractDetailInPage);
+    const raw = await page.evaluate(toPageScript(extractDetailInPage));
     const detail = toDetail(raw, deps.marketplace.id, asin);
     if (!detail) {
       return { failure: 'parser-miss', message: `未从 ${url} 解析到商品详情` };
