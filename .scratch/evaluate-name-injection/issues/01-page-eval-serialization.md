@@ -1,7 +1,7 @@
 # 01-page-eval-serialization
 
 Type: bugfix
-Status: in-progress
+Status: resolved
 
 dev 模式（tsx watch）下详情抓取恒失败并报 `__name is not defined`，生产路径正常。规格见同目录 `spec.md`。
 
@@ -17,9 +17,30 @@ dev 模式（tsx watch）下详情抓取恒失败并报 `__name is not defined`�
 
 ## 验证
 
-- 探针（修复前）：`extractDetailInPage` `contains __name = true` 且裸上下文调用抛 `__name is not defined`；`extractSearchResultsInPage` 无注入、调用正常。
-- 回归测试含对照组：用 `new Function` 构造体内引用 `__name` 的函数，包装前抛错、包装后正常，证明回路可红且不依赖 bundler 行为。
-- `npm run dev` 下真实 `POST /api/detail` 不再报错（Phase 1 回路重跑）。
+- 探针（修复前）：`extractDetailInPage` `contains __name = true` 且裸上下文调用抛 `__name is not defined`。
+- 探针（修复后）对比：
+
+```
+[probe] extractDetailInPage
+  contains __name        = true
+  direct serialize       = THREW: __name is not defined
+  toPageScript wrapped   = OK
+[probe] extractSearchResultsInPage
+  contains __name        = false
+  direct serialize       = OK
+  toPageScript wrapped   = OK
+```
+
+- `npm run dev` 受控对照（同一服务、同一 ASIN，只改调用写法）：
+
+```
+旧写法：{"saved":0,"detail":null,"attempts":[{"ok":false,"failure":"unknown","message":"__name is not defined"}]}
+新写法：{"saved":1,"detail":{...完整变体数据...},"attempts":[{"ok":true,"durationMs":9464}]}
+```
+
+- 回归测试含对照组：`new Function` 构造体内引用 `__name` 的函数，包装前抛错、包装后正常。该用例不依赖 vitest 是否注入（实测 vitest 不注入），锁的是序列化边界契约本身。
+- `detectCaptchaInPage` 提取后新增 5 项判定用例（此前该逻辑内联在 `evaluate` 里，不可测）。
+- `typecheck` + `build` 通过，全量 130/130 通过。
 
 ## Comments
 
