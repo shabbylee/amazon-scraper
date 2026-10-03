@@ -6,17 +6,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from modeling.aggregate import aggregate, per_unit_observations  # noqa: E402
+from modeling.aggregate import aggregate, per_unit_observations, stratify  # noqa: E402
 from modeling.value_delta import DeltaRow  # noqa: E402
 
 
-def row(dim: str, change: float, price_delta: float, currency: str = "CNY") -> DeltaRow:
+def row(
+    dim: str,
+    change: float,
+    price_delta: float,
+    currency: str = "CNY",
+    *,
+    monotonic: bool = True,
+    level: float | None = None,
+) -> DeltaRow:
     return DeltaRow(
         from_asin="A",
         to_asin="B",
         delta={dim: change},
         price_delta=price_delta,
         currency=currency,
+        monotonic=monotonic,
+        price_level=level,
     )
 
 
@@ -112,6 +122,66 @@ class AggregateTest(unittest.TestCase):
         self.assertIsNone(r.ci95_low)
         self.assertAlmostEqual(r.mean, 200.0)
         self.assertAlmostEqual(r.median, 200.0)
+
+
+class RobustStatsTest(unittest.TestCase):
+    def test_quartiles_iqr_and_mad(self) -> None:
+        rows = [row("memory_gb", 32.0, v) for v in (32.0, 64.0, 96.0, 128.0)]
+        r = aggregate(rows)[0]
+        obs = [1.0, 2.0, 3.0, 4.0]
+        q1, _q2, q3 = statistics.quantiles(obs, n=4)
+        median = statistics.median(obs)
+        self.assertAlmostEqual(r.q1, q1)
+        self.assertAlmostEqual(r.q3, q3)
+        self.assertAlmostEqual(r.iqr, q3 - q1)
+        self.assertAlmostEqual(r.mad, statistics.median([abs(x - median) for x in obs]))
+
+    def test_single_observation_has_no_robust_spread(self) -> None:
+        r = aggregate([row("memory_gb", 32.0, 6400.0)])[0]
+        self.assertIsNone(r.q1)
+        self.assertIsNone(r.q3)
+        self.assertIsNone(r.iqr)
+        self.assertIsNone(r.mad)
+
+
+class MonotonicityFilterTest(unittest.TestCase):
+    def test_nonmonotonic_observations_are_dropped_and_counted(self) -> None:
+        rows = [
+            row("memory_gb", 32.0, 6400.0),
+            row("memory_gb", 32.0, 3200.0, monotonic=False),
+        ]
+        r = aggregate(rows)[0]
+        self.assertEqual(r.n, 1)
+        self.assertAlmostEqual(r.median, 200.0)
+        self.assertEqual(r.dropped_nonmonotonic, 1)
+
+    def test_monotonic_requirement_can_be_relaxed(self) -> None:
+        rows = [row("memory_gb", 32.0, 6400.0, monotonic=False)]
+        self.assertEqual(aggregate(rows, require_monotonic=False)[0].n, 1)
+        self.assertEqual(aggregate(rows), [])
+
+
+class StratifyTest(unittest.TestCase):
+    def test_stratify_is_gated_when_bands_are_too_small(self) -> None:
+        # 每层达不到阈值时宁可不产出，也不给「每层几个样本」的假分层。
+        rows = [row("memory_gb", 32.0, 3200.0, level=1000.0) for _ in range(20)]
+        self.assertEqual(stratify(rows), [])
+
+    def test_stratify_splits_at_price_level_median(self) -> None:
+        rows = [
+            row("memory_gb", 32.0, 3200.0, level=1000.0 if i < 30 else 9000.0)
+            for i in range(60)
+        ]
+        out = stratify(rows)
+        self.assertEqual({s.band for s in out}, {"low", "high"})
+        for stratum in out:
+            self.assertEqual(stratum.n, 30)
+            self.assertAlmostEqual(stratum.median, 100.0)
+            self.assertAlmostEqual(stratum.cut, 5000.0)
+
+    def test_rows_without_price_level_are_not_stratified(self) -> None:
+        rows = [row("memory_gb", 32.0, 3200.0) for _ in range(60)]
+        self.assertEqual(stratify(rows), [])
 
 
 if __name__ == "__main__":

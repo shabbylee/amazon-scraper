@@ -4,6 +4,10 @@
     PYTHONPATH=modeling/src <python3.12> modeling/scripts/aggregate.py [marketplace]
 
 输出 stdout 表格；JSON 结果写 .scratch/value-delta-multi/aggregate.json。
+
+统计口径（.scratch/value-delta-stratified/spec.md）：中位数 / IQR / MAD 为主，
+`n >= 30` 时才附正态近似 95% CI；组内价格非单调（变体维度混入异型号）的观测被剔除并计数；
+分层按价格段切分，每段样本量不足时整组不产出。
 """
 
 from __future__ import annotations
@@ -15,9 +19,17 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "modeling" / "src"))
 
-from modeling.aggregate import aggregate  # noqa: E402
+from modeling.aggregate import (  # noqa: E402
+    STRATIFY_MIN_N,
+    aggregate,
+    stratify,
+)
 from modeling.connect import open_readonly, read_all_variants  # noqa: E402
 from modeling.value_delta import compute_listing_deltas  # noqa: E402
+
+
+def _num(value: float | None) -> str:
+    return "N/A" if value is None else f"{value:,.2f}"
 
 
 def main() -> None:
@@ -41,8 +53,12 @@ def main() -> None:
         rows.extend(deltas)
 
     scope = marketplace or "all"
-    print(f"[aggregate] marketplace={scope} listings_with_variants={len(variants)} "
-          f"listings_with_deltas={listings_with_deltas} total_delta_rows={len(rows)}")
+    dropped_total = sum(1 for r in rows if not r.monotonic)
+    print(
+        f"[aggregate] marketplace={scope} listings_with_variants={len(variants)} "
+        f"listings_with_deltas={listings_with_deltas} total_delta_rows={len(rows)} "
+        f"nonmonotonic_rows={dropped_total}"
+    )
 
     result = aggregate(rows)
     if not result:
@@ -51,16 +67,34 @@ def main() -> None:
 
     for r in result:
         unit = f"{r.currency}/{r.dimension}"
-        line = (
+        print(
             f"  {r.dimension:<12} {r.currency:<4} n={r.n:<3} "
-            f"mean={r.mean:,.2f} {unit} median={r.median:,.2f} "
-            f"std={r.std:,.2f} min={r.min:,.2f} max={r.max:,.2f}"
+            f"median={_num(r.median)} {unit}  "
+            f"q1={_num(r.q1)} q3={_num(r.q3)} iqr={_num(r.iqr)} mad={_num(r.mad)}"
         )
-        if r.std is None:
-            line += " std=N/A"
+        tail = (
+            f"      mean={_num(r.mean)} std={_num(r.std)} "
+            f"min={_num(r.min)} max={_num(r.max)}"
+        )
+        if r.dropped_nonmonotonic:
+            tail += f" dropped_nonmonotonic={r.dropped_nonmonotonic}"
         if r.ci95_low is not None and r.ci95_high is not None:
-            line += f" ci95=[{r.ci95_low:,.2f}, {r.ci95_high:,.2f}]"
-        print(line)
+            tail += f" ci95=[{_num(r.ci95_low)}, {_num(r.ci95_high)}]"
+        print(tail)
+
+    strata = stratify(rows)
+    if strata:
+        for s in strata:
+            print(
+                f"  [分层] {s.dimension:<12} {s.currency:<4} {s.band:<5} "
+                f"n={s.n:<3} median={_num(s.median)} q1={_num(s.q1)} q3={_num(s.q3)} "
+                f"mad={_num(s.mad)} cut={_num(s.cut)}"
+            )
+    else:
+        print(
+            f"  分层：未产出（每个价格段需 n >= {STRATIFY_MIN_N}，"
+            "当前语料未达到，如实报告而不给无意义分层）"
+        )
 
     out_file = REPO_ROOT / ".scratch" / "value-delta-multi" / "aggregate.json"
     out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +103,9 @@ def main() -> None:
         "listings_with_variants": len(variants),
         "listings_with_deltas": listings_with_deltas,
         "total_delta_rows": len(rows),
+        "nonmonotonic_rows": dropped_total,
         "aggregate": [r.to_dict() for r in result],
+        "strata": [s.to_dict() for s in strata],
     }
     out_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
     print(f"[aggregate] JSON 已写 {out_file}")
