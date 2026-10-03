@@ -59,3 +59,28 @@ def read_listing_variants(
         return None
     data = json.loads(row["variants"])
     return data if isinstance(data, list) else None
+
+
+def read_all_variants(
+    conn: sqlite3.Connection, marketplace: str | None = None
+) -> list[tuple[str, list[object] | None]]:
+    """读所有（或指定 marketplace）含变体 JSON 的 Listing，返回 (asin, variants) 列表。
+
+    只挑 variants 非空的记录；旧 string[] 记录按原样返回，由调用方做结构兼容判断。
+    """
+    if marketplace is None:
+        rows = conn.execute(
+            "SELECT asin, variants FROM listings "
+            "WHERE variants IS NOT NULL AND variants != ''"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT asin, variants FROM listings "
+            "WHERE marketplace = ? AND variants IS NOT NULL AND variants != ''",
+            (marketplace,),
+        ).fetchall()
+    out: list[tuple[str, list[object] | None]] = []
+    for row in rows:
+        data = json.loads(row["variants"])
+        out.append((row["asin"], data if isinstance(data, list) else None))
+    return out

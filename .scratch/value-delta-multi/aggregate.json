@@ -1,0 +1,32 @@
+{
+  "scope": "com",
+  "listings_with_variants": 25,
+  "listings_with_deltas": 6,
+  "total_delta_rows": 14,
+  "aggregate": [
+    {
+      "dimension": "memory_gb",
+      "currency": "CNY",
+      "n": 5,
+      "mean": 139.30741666666665,
+      "median": 125.6659375,
+      "std": 104.73681963998952,
+      "min": 13.957083333333335,
+      "max": 259.71,
+      "ci95_low": null,
+      "ci95_high": null
+    },
+    {
+      "dimension": "storage_gb",
+      "currency": "CNY",
+      "n": 5,
+      "mean": 1.775243180327869,
+      "median": 1.46798,
+      "std": 1.0076483303617887,
+      "min": 0.67022,
+      "max": 3.35109,
+      "ci95_low": null,
+      "ci95_high": null
+    }
+  ]
+}
