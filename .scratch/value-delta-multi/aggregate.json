@@ -1,32 +1,44 @@
 {
-  "scope": "com",
+  "scope": "all",
   "listings_with_variants": 25,
-  "listings_with_deltas": 6,
-  "total_delta_rows": 14,
+  "listings_with_deltas": 5,
+  "total_delta_rows": 13,
+  "nonmonotonic_rows": 6,
   "aggregate": [
     {
       "dimension": "memory_gb",
       "currency": "CNY",
-      "n": 5,
-      "mean": 139.30741666666665,
-      "median": 125.6659375,
-      "std": 104.73681963998952,
-      "min": 13.957083333333335,
+      "n": 3,
+      "mean": 205.18625,
+      "median": 230.1828125,
+      "std": 70.43134086107037,
+      "min": 125.6659375,
       "max": 259.71,
+      "q1": 125.6659375,
+      "q3": 259.71,
+      "iqr": 134.0440625,
+      "mad": 29.527187499999968,
       "ci95_low": null,
-      "ci95_high": null
+      "ci95_high": null,
+      "dropped_nonmonotonic": 2
     },
     {
       "dimension": "storage_gb",
       "currency": "CNY",
-      "n": 5,
-      "mean": 1.775243180327869,
-      "median": 1.46798,
-      "std": 1.0076483303617887,
+      "n": 4,
+      "mean": 1.3812814754098361,
+      "median": 1.4042050000000001,
+      "std": 0.5648905887825059,
       "min": 0.67022,
-      "max": 3.35109,
+      "max": 2.0464959016393443,
+      "q1": 0.8377725,
+      "q3": 1.901866926229508,
+      "iqr": 1.064094426229508,
+      "mad": 0.3530329508196721,
       "ci95_low": null,
-      "ci95_high": null
+      "ci95_high": null,
+      "dropped_nonmonotonic": 0
     }
-  ]
+  ],
+  "strata": []
 }
