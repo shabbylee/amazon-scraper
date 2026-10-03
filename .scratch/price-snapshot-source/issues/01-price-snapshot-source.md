@@ -1,7 +1,7 @@
 # 01-price-snapshot-source
 
 Type: bugfix
-Status: in-progress
+Status: resolved
 
 `price_snapshots` 不记录价源，搜索结果价（listing）与详情页 Buy Box 价（buybox）混进同一条只追加序列，导致 Watch 告警跨口径比较而失真、历史曲线混口径。规格见同目录 `spec.md`，决策见 `docs/adr/0010-price-snapshot-source.md`。
 
