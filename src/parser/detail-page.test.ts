@@ -172,6 +172,60 @@ describe('parseVariations', () => {
     expect(parsed[0]!.options[0]!.priceNum).toBe(1200);
   });
 
+  it('strips inlined CSS rules and embedded price text from option labels', () => {
+    const parsed = parseVariations([
+      {
+        name: 'color_name',
+        title: 'Color',
+        options: [
+          {
+            asin: 'B000000004',
+            label:
+              '.centralizedApexPriceSavingsOverrides { color: var(--deal-savings-color, #CC0C39)!important; } ' +
+              'CNY 1,742.50 with 41 percent savings In Stock',
+          },
+        ],
+      },
+    ]);
+    // 纯噪声选项清洗后为空 label；下游配置解析据此跳过它。
+    expect(parsed[0]!.options[0]!.label).toBe('');
+    expect(parsed[0]!.options[0]!.priceNum).toBeNull();
+  });
+
+  it('keeps config text when the li carried a style block and stock status', () => {
+    const parsed = parseVariations([
+      {
+        name: 'set_name',
+        title: 'Set name',
+        options: [
+          {
+            asin: 'B000000005',
+            label:
+              'N4120|64GB eMMC .centralizedApexPriceSavingsOverrides' +
+              ' { color: var(--deal-savings-color, #CC0C39)!important; } CNY 1,534.80 In Stock',
+          },
+        ],
+      },
+    ]);
+    expect(parsed[0]!.options[0]!.label).toBe('N4120|64GB eMMC');
+  });
+
+  it('drops availability status text from labels', () => {
+    const parsed = parseVariations([
+      {
+        name: 'set_name',
+        title: 'Set name',
+        options: [
+          { asin: 'B000000006', label: '16 GB See available options' },
+          { asin: 'B000000007', label: '32GB Currently unavailable.' },
+        ],
+      },
+    ]);
+    expect(parsed[0]!.options[0]!.label).toBe('16 GB');
+    expect(parsed[0]!.options[1]!.label).toBe('32GB');
+    expect(parsed[0]!.options[1]!.unavailable).toBe(true);
+  });
+
   it('skips malformed entries and legacy string arrays', () => {
     expect(parseVariations(null)).toEqual([]);
     expect(parseVariations(['old', 'shape'])).toEqual([]);

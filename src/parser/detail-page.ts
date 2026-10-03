@@ -33,6 +33,15 @@ export interface RawDetail {
  */
 export function extractDetailInPage(): unknown {
   const text = (el: Element | null): string => (el?.textContent ?? '').trim();
+  // 选项 <li> 内可能夹带 <style>（Amazon 把价格区块的 CSS 规则内联在选项节点里），
+  // 而 textContent 会把 <style> 的规则体一起抓出来，污染下游的配置解析。
+  // 克隆后剔除 style/script 子树，只保留可见文本。
+  const optionText = (el: Element | null): string => {
+    if (!el) return '';
+    const clone = el.cloneNode(true) as Element;
+    clone.querySelectorAll('style, script').forEach((node) => node.remove());
+    return (clone.textContent ?? '').replace(/\s+/g, ' ').trim();
+  };
   const src = (el: Element | null): string | null => {
     const v = el?.getAttribute('src');
     return v && v.length > 0 ? v : null;
@@ -100,7 +109,7 @@ export function extractDetailInPage(): unknown {
     const options: Array<{ asin: string; label: string }> = [];
     row.querySelectorAll('li[data-asin]').forEach((li) => {
       const asin = li.getAttribute('data-asin') ?? '';
-      const label = text(li);
+      const label = optionText(li);
       if (asin && label) options.push({ asin, label });
     });
     if (options.length > 0) variantRows.push({ name: dimId, title, options });
@@ -141,6 +150,44 @@ const UNAVAILABLE_MARKERS = [
 
 const CURRENCY_CODES = ['CNY', 'JPY', 'EUR', 'GBP', 'USD', 'AUD', 'CAD'] as const;
 
+// 与建模层 clean.py 的 clean_label 对应：浏览器侧剔除 <style> 子树是源头修复，
+// 这里再剥一层文本噪声，两层互为纵深防御。
+const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+// 选择器必须以 . # @ 开头；若把前缀设为可选，`N4120|64GB eMMC { ... }` 这类
+// 含花括号的普通配置文本会被整段吞掉。
+const CSS_RULE_RE = /[.#@][\w-]*[^{}]*\{[^{}]*\}/g;
+const CSS_DECL_RE = /[\w-]+\s*:\s*var\([^)]*\)\s*!?\s*important\s*;?/g;
+const EMBEDDED_PRICE_RE = /(?:CNY|US\$|USD|EUR|GBP|JPY|AUD|CAD|\$|€|£|JP¥|¥)\s*[\d,]+(?:\.\d+)?/gi;
+const LABEL_NOISE_RES: readonly RegExp[] = [
+  /\d+\s*个选项/gi,
+  /起始价\s*[：:]?/g,
+  /with\s+\d+\s*percent\s+savings/gi,
+  /\d+\s*percent\s+savings/gi,
+  /see\s+available\s+options/gi,
+  /currently\s+unavailable\.?/gi,
+  /temporarily\s+out\s+of\s+stock/gi,
+  /out\s+of\s+stock/gi,
+  /only\s+\d+\s+left\s+in\s+stock[^.]*\./gi,
+  /this\s+item\s+cannot\s+be\s+shipped[^.]*\./gi,
+  /please\s+choose\s+a\s+different\s+delivery\s+location\.?/gi,
+  /order\s+soon\.?/gi,
+  /in\s+stock/gi,
+  /无法配送/g,
+  /目前无货/g,
+];
+const LABEL_TRIM_RE = /^[\s|,;:·-]+|[\s|,;:·-]+$/g;
+
+/** 剥掉选项文本里的 CSS、内嵌价格与库存/配送状态，只留配置描述。 */
+function stripLabelNoise(raw: string): string {
+  let text = raw
+    .replace(CSS_COMMENT_RE, ' ')
+    .replace(CSS_RULE_RE, ' ')
+    .replace(CSS_DECL_RE, ' ')
+    .replace(EMBEDDED_PRICE_RE, ' ');
+  for (const pattern of LABEL_NOISE_RES) text = text.replace(pattern, ' ');
+  return text.replace(/\s+/g, ' ').replace(LABEL_TRIM_RE, '').trim();
+}
+
 function extractVariantCurrency(text: string): string | null {
   const t = text.toUpperCase();
   for (const code of CURRENCY_CODES) {
@@ -171,10 +218,7 @@ function parseVariantText(fullText: string): Pick<VariantOption, 'label' | 'pric
 
   // 配置 = "N个选项/N options" 之前的文本；无该标记则取全文。
   const cut = normalized.match(/^(.*?)\d+\s*(?:个选项|options?)/i)?.[1] ?? normalized;
-  const label = cut
-    .replace(/\/\*[\s\S]*?\*\//g, '') // CSS 注释垃圾
-    .replace(/\s+/g, ' ')
-    .trim();
+  const label = stripLabelNoise(cut);
 
   return { label, priceText, priceNum };
 }
