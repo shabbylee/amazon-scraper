@@ -20,5 +20,13 @@ data/
 *.sqlite-shm
 data/
 
+# 建模层（Python，ADR-0009）
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
 # 附件/素材（如需纳入版本管理可删除下面这行）
 .scratch/**/assets/

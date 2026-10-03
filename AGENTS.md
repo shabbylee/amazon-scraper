@@ -14,6 +14,7 @@
   - **Parser**（`src/parser/`）只做 DOM → 领域对象，纯函数、无 IO、可单测
   - **Scraper**（`src/scraper/`）编排 Browser + Retry + Parser + Proxy（`src/scraper/proxy.ts` 代理池 / `proxy-auth.ts` CDP 认证 / `stealth.ts` 轻量隐身）完成 Attempt，负责失败分类
   - 新加代码前先问自己"这段属于哪层"；跨层的类型统一放 `src/types.ts`
+- **建模层（Python）与采集层（TS）分离**（ADR-0009）：采集层写 `data/amazon.db`，建模层（`modeling/`）只读该库；schema 是跨语言契约，改动必须走 ADR。
 
 ## 抓取伦理与边界
 
@@ -50,6 +51,7 @@ CI 走 `.github/workflows/ci.yml`（Node 20 / 22 / 24 / 26 矩阵：install → 
 
 - **TypeScript strict + ESM**：后端源码在 `src/`，编译到 `dist/`；`"type": "module"`，`NodeNext` 模块解析，所有相对 import 必须带 `.js` 扩展名。决定与迁移代价见 `docs/adr/0002-typescript-migration.md`；再改模块系统或语言需新 ADR。
 - **Node ≥ 20**：跟 `package.json#engines` 与 Dockerfile base image 保持一致。
+- **建模层用 Python ≥ 3.11**：`modeling/` 独立目录 + `pyproject.toml`，只读 `data/amazon.db`（ADR-0009）。采集层只写、建模层只读；建模层产物落库位置另行定义，改 schema 走 ADR。
 - **无框架前端**：`public/index.html` 单文件，保持零依赖；如要引入构建流程，走 ADR。
 - **配置统一从 `src/config.ts` 读**：`loadConfig({ env, envFilePath })` 会把 `process.env` 覆盖到 `.env` 之上，并把 `requestIntervalMs` / `retryBackoffMs` 夹紧到 AGENTS.md 的限速硬约束。**不要**在业务代码里直接读 `process.env` 或硬编码常量。
 - **Parser 与 Scraper 严格分层**：Parser 是纯函数（DOM → 领域对象），Scraper 才碰 browser/IO/retry。跨层的类型都在 `src/types.ts`。

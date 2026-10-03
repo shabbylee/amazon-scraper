@@ -89,7 +89,8 @@ amazon-scraper/
 │   │   ├── 0005-product-detail.md
 │   │   ├── 0006-persistence.md
 │   │   ├── 0007-price-alert.md
-│   │   └── 0008-scrape-concurrency.md
+│   │   ├── 0008-scrape-concurrency.md
+│   │   └── 0009-modeling-layer-python.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
 ├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail / persistence / price-alert）
 ├── src/
@@ -121,6 +122,19 @@ amazon-scraper/
 │   └── parser/
 │       ├── search-page.ts    # 浏览器侧 extractSearchResultsInPage + Node 侧 parsePriceNum / toListings
 │       └── detail-page.ts    # 浏览器侧 extractDetailInPage + Node 侧 toDetail
+├── modeling/                # Python 建模层（ADR-0009，只读 data/amazon.db）
+│   ├── pyproject.toml
+│   ├── README.md
+│   ├── scripts/
+│   │   ├── inspect_db.py    # 验证 TS→Python 的 SQLite 衔接
+│   │   └── value_delta.py   # 单 Listing 配置边际价值表
+│   ├── src/
+│   │   └── modeling/
+│   │       ├── __init__.py
+│   │       ├── connect.py   # 只读衔接 + variants 读取
+│   │       └── value_delta.py # 配置向量拆解 + 价差计算
+│   └── tests/
+│       └── test_value_delta.py
 ├── tests/
 │   ├── api.test.ts           # supertest 集成测试（health / 入参校验）
 │   ├── scrape-api.test.ts    # /api/scrape mock 集成测试（不启动真实 Chrome）
