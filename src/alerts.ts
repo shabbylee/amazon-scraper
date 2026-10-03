@@ -35,7 +35,8 @@ export function buildPriceAlerts(
   const alerts: PriceAlertPayload[] = [];
   for (const l of listings) {
     if (l.priceNum === null || !l.hasPrice) continue;
-    const recent = store.getRecentSnapshots(marketplace, l.asin, 2);
+    // 只在同价源内比较：Watch 比的是搜索价，混入 Buy Box 快照会造出虚假波动（ADR-0010）。
+    const recent = store.getRecentSnapshots(marketplace, l.asin, 2, 'listing');
     if (recent.length < 2) continue; // 本次是第一条快照，无从对比
     const to = recent[recent.length - 1]!;
     const from = recent[recent.length - 2]!;

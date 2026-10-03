@@ -46,8 +46,12 @@ _Avoid_: run、fetch、执行、请求
 _Avoid_: 错误、error、异常
 
 **Price Snapshot**:
-某个 Listing 在某个时刻的价格记录，用于历史对比，包含 `(Listing 键, PriceText, PriceNum, Currency, CapturedAt)`。Snapshot 只追加，不更新。
+某个 Listing 在某个时刻的价格记录，用于历史对比，包含 `(Listing 键, PriceText, PriceNum, Currency, PriceSource, CapturedAt)`。Snapshot 只追加，不更新。
 _Avoid_: 价格记录、历史、price history
+
+**Price Source**:
+一条 Price Snapshot 的价源口径，取值 `listing`（搜索结果页展示的 Listing 价格）或 `buybox`（详情页 Buy Box 价格）。两者采集时机与含义不同（见 Listing / Buy Box），因此**不可混进同一条序列比较**；迁移前的历史记录价源未知。见 ADR-0010。
+_Avoid_: 价格来源、渠道、price type
 
 **Watch**:
 用户订阅的 `(Keyword, Marketplace, Schedule)` 组合，用于周期性触发 Scrape Job 并在价格变化时提醒。Watch 是"持久化 + 定时"阶段的入口概念。

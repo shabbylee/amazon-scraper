@@ -753,29 +753,65 @@ function fmtDate(iso) {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+/* 价源口径（ADR-0010）：不同口径的快照不能混成一条线 */
+const SOURCE_META = {
+  buybox:  { label: 'Buy Box 价', color: '#8BC8EA' },
+  listing: { label: '搜索价',     color: '#E8A33D' },
+  unknown: { label: '价源未知',   color: '#9CA3AF' },
+};
+
 function renderHistorySvg(points) {
   const W = 520, H = 150, PAD = 36;
-  const nums = points.map(p => p.priceNum).filter(n => n != null);
-  if (nums.length < 2) return '<div class="hint">价格快照不足（需 ≥2 个），多抓几次再对比</div>';
+  const pts = points.filter(p => p.priceNum != null);
+  if (pts.length < 2) return '<div class="hint">价格快照不足（需 ≥2 个），多抓几次再对比</div>';
+
+  // x 轴按真实时间比例：分组后各组点数不同，用索引等距会让跨组点错位
+  const ts = p => new Date(p.capturedAt).getTime();
+  const t0 = Math.min(...pts.map(ts));
+  const t1 = Math.max(...pts.map(ts));
+  const tSpan = (t1 - t0) || 1;
+  const nums = pts.map(p => p.priceNum);
   const min = Math.min(...nums);
   const max = Math.max(...nums);
   const span = (max - min) || 1;
-  const x = i => PAD + (i * (W - PAD * 2)) / (points.length - 1);
+  const x = t => PAD + ((t - t0) / tSpan) * (W - PAD * 2);
   const y = n => H - 22 - ((n - min) / span) * (H - 44);
-  const path = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.priceNum).toFixed(1)}`).join(' ');
-  const dots = points.map((p, i) =>
-    `<circle cx="${x(i).toFixed(1)}" cy="${y(p.priceNum).toFixed(1)}" r="3" fill="#8BC8EA"/>`
-  ).join('');
-  const first = points[0];
-  const last = points[points.length - 1];
+
+  // 按价源分组，组内连线、组间不连：避免把口径切换画成价格跳变
+  const groups = new Map();
+  for (const p of pts) {
+    const key = SOURCE_META[p.source] ? p.source : 'unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+
+  let series = '';
+  let legend = '';
+  for (const [key, group] of groups) {
+    const meta = SOURCE_META[key];
+    const g = [...group].sort((a, b) => ts(a) - ts(b));
+    if (g.length >= 2) {
+      const path = g.map(p => `${x(ts(p)).toFixed(1)},${y(p.priceNum).toFixed(1)}`).join(' ');
+      series += `<polyline points="${path}" fill="none" stroke="${meta.color}" stroke-width="2"/>`;
+    }
+    series += g.map(p =>
+      `<circle cx="${x(ts(p)).toFixed(1)}" cy="${y(p.priceNum).toFixed(1)}" r="3" fill="${meta.color}"/>`
+    ).join('');
+    legend += `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;">` +
+      `<span style="width:8px;height:8px;border-radius:50%;background:${meta.color};display:inline-block;"></span>` +
+      `${meta.label}（${g.length}）</span>`;
+  }
+
+  const first = pts[0];
+  const last = pts[pts.length - 1];
   return `
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="价格历史">
       <line x1="${PAD}" y1="${H - 22}" x2="${W - PAD}" y2="${H - 22}" stroke="#E4E3DD"/>
-      <polyline points="${path}" fill="none" stroke="#8BC8EA" stroke-width="2"/>
-      ${dots}
+      ${series}
       <text x="${PAD}" y="${H - 6}" font-size="10" fill="#6B7280">${fmtDate(first.capturedAt)} ${first.priceText || ''}</text>
       <text x="${W - PAD}" y="${H - 6}" font-size="10" fill="#6B7280" text-anchor="end">${fmtDate(last.capturedAt)} ${last.priceText || ''}</text>
-    </svg>`;
+    </svg>
+    <div style="font-size:11px;color:#6B7280;margin-top:4px;">${legend}</div>`;
 }
 
 async function showHistory(asin, marketplace, days) {

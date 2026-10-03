@@ -68,6 +68,67 @@ describe('saveScrapeResult', () => {
   });
 });
 
+describe('price snapshot source', () => {
+  /** 可控价格的详情 fixture：Buy Box 价必须可配，才能验证价源与跨源隔离。 */
+  const detailPriced = (
+    asin: string,
+    priceText: string,
+    priceNum: number | null
+  ): ProductDetail => ({
+    marketplace: 'com',
+    asin,
+    href: `https://www.amazon.com/dp/${asin}`,
+    title: 'Priced Item',
+    image: null,
+    rating: 4.2,
+    reviewCount: 99,
+    buyBox: {
+      hasBuyBox: priceNum !== null,
+      priceText,
+      priceNum,
+      sellerName: 'Amazon.com',
+      shippingText: 'FREE delivery',
+      isPrime: true,
+      inStock: true,
+    },
+    variants: [],
+  });
+
+  it('tags search scrapes as listing and detail scrapes as buybox', () => {
+    store.saveScrapeResult('com', [listing('B0SRC00001', '$100.00', 100)]);
+    store.saveDetail(detailPriced('B0SRC00001', '$150.00', 150));
+
+    expect(store.getHistory('com', 'B0SRC00001', 30).map((p) => p.source)).toEqual([
+      'listing',
+      'buybox',
+    ]);
+  });
+
+  it('filters recent snapshots by source so a cross-source pair cannot be compared', () => {
+    store.saveScrapeResult('com', [listing('B0SRC00002', '$100.00', 100)]);
+    store.saveDetail(detailPriced('B0SRC00002', '$150.00', 150));
+    store.saveScrapeResult('com', [listing('B0SRC00002', '$100.00', 100)]);
+
+    // 不过滤时最近两条跨了两个口径 —— 这正是告警失真的来源
+    expect(store.getRecentSnapshots('com', 'B0SRC00002', 2).map((p) => p.source)).toEqual([
+      'buybox',
+      'listing',
+    ]);
+
+    // 按源过滤后只剩同一口径的两条搜索价，价差为 0
+    const listingOnly = store.getRecentSnapshots('com', 'B0SRC00002', 2, 'listing');
+    expect(listingOnly.map((p) => p.source)).toEqual(['listing', 'listing']);
+    expect(listingOnly.map((p) => p.priceNum)).toEqual([100, 100]);
+  });
+
+  it('reports the buybox source for detail-only history', () => {
+    store.saveDetail(detailPriced('B0SRC00003', '$42.00', 42));
+    const history = store.getHistory('com', 'B0SRC00003', 30);
+    expect(history).toHaveLength(1);
+    expect(history[0]?.source).toBe('buybox');
+  });
+});
+
 describe('saveDetail', () => {
   const detailVariants = [
     {

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { initSchema } from './db/schema.js';
 import { SqlitePersistence } from './db/persistence.js';
 import { buildPriceAlerts, deliverAlert, persistAlert, type PriceAlertPayload } from './alerts.js';
-import type { Listing } from './types.js';
+import type { Listing, ProductDetail } from './types.js';
 
 const listing = (asin: string, priceText: string, priceNum: number | null): Listing => ({
   marketplace: 'com',
@@ -15,6 +15,27 @@ const listing = (asin: string, priceText: string, priceNum: number | null): List
   priceText,
   hasPrice: priceNum !== null,
   priceNum,
+});
+
+/** 详情抓取产物：Buy Box 价会写入 buybox 源的快照（ADR-0010）。 */
+const detail = (asin: string, priceText: string, priceNum: number | null): ProductDetail => ({
+  marketplace: 'com',
+  asin,
+  href: `https://www.amazon.com/dp/${asin}`,
+  title: `Item ${asin}`,
+  image: null,
+  rating: 4.5,
+  reviewCount: 12,
+  buyBox: {
+    hasBuyBox: priceNum !== null,
+    priceText,
+    priceNum,
+    sellerName: 'Amazon.com',
+    shippingText: '',
+    isPrime: true,
+    inStock: true,
+  },
+  variants: [],
 });
 
 const watch = {
@@ -77,6 +98,20 @@ describe('buildPriceAlerts', () => {
       store,
       1
     );
+    expect(alerts).toHaveLength(0);
+    db.close();
+  });
+
+  it('does not fire an alert when a Buy Box snapshot shifts the price source between scrapes', () => {
+    const db = new Database(':memory:');
+    initSchema(db);
+    const store = new SqlitePersistence(db);
+    // 搜索价 $100 → 中途详情抓到 Buy Box 价 $150（换口径，不是价格变动）→ 再搜仍是 $100
+    store.saveScrapeResult('com', [listing('B0MIXSRC01', '$100.00', 100)]);
+    store.saveDetail(detail('B0MIXSRC01', '$150.00', 150));
+    store.saveScrapeResult('com', [listing('B0MIXSRC01', '$100.00', 100)]);
+
+    const alerts = buildPriceAlerts(watch, 'com', [listing('B0MIXSRC01', '$100.00', 100)], store, 1);
     expect(alerts).toHaveLength(0);
     db.close();
   });

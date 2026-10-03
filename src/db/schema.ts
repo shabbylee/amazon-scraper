@@ -66,6 +66,11 @@ const MIGRATIONS: readonly string[] = [
   CREATE INDEX IF NOT EXISTS idx_alerts_watch
     ON price_alerts(watch_id, created_at);
   `,
+  // v3：Price Snapshot 价源（ADR-0010）—— 区分搜索结果价与详情页 Buy Box 价。
+  // 迁移前写入的历史记录留 NULL，含义是"价源未知"，不做猜测性回填。
+  `
+  ALTER TABLE price_snapshots ADD COLUMN source TEXT;
+  `,
 ];
 
 export function initSchema(db: Database): void {

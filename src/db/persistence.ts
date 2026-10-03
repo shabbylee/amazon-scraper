@@ -6,11 +6,16 @@ import type { Listing, MarketplaceId, ProductDetail } from '../types.js';
  * 将来换 Postgres 只换实现，不换业务代码。
  */
 
+/** 快照的价源口径（ADR-0010）：搜索结果价 vs 详情页 Buy Box 价。 */
+export type PriceSource = 'listing' | 'buybox';
+
 export interface PricePoint {
   readonly capturedAt: string;
   readonly priceText: string | null;
   readonly priceNum: number | null;
   readonly currency: string | null;
+  /** 价源；`null` = 迁移前写入、价源未知（ADR-0010）。 */
+  readonly source: PriceSource | null;
 }
 
 export interface WatchRecord {
@@ -41,8 +46,16 @@ export interface Persistence {
   saveScrapeResult(marketplace: MarketplaceId, listings: readonly Listing[]): number;
   saveDetail(detail: ProductDetail): void;
   getHistory(marketplace: MarketplaceId, asin: string, days: number): readonly PricePoint[];
-  /** 最近 N 条价格快照（时间升序），用于 Watch 触发后的价格对比（ADR-0007）。 */
-  getRecentSnapshots(marketplace: MarketplaceId, asin: string, limit: number): readonly PricePoint[];
+  /**
+   * 最近 N 条价格快照（时间升序），用于 Watch 触发后的价格对比（ADR-0007）。
+   * 传 source 可把比较限制在同一价源内，避免跨口径伪造波动（ADR-0010）。
+   */
+  getRecentSnapshots(
+    marketplace: MarketplaceId,
+    asin: string,
+    limit: number,
+    source?: PriceSource
+  ): readonly PricePoint[];
   /** 记录一条 Price Alert；返回 id。 */
   insertAlert(alert: Omit<PriceAlertRecord, 'id' | 'createdAt'>): number;
   searchListings(opts: {
@@ -107,6 +120,27 @@ const toListing = (r: ListingRow): Listing => ({
   priceNum: r.price_num,
 });
 
+interface PricePointRow {
+  capturedAt: string;
+  priceText: string | null;
+  priceNum: number | null;
+  currency: string | null;
+  source: string | null;
+}
+
+/** 把库里读到的 source 收窄成 PriceSource；无法识别的值按"价源未知"处理（ADR-0010）。 */
+function toPriceSource(value: string | null): PriceSource | null {
+  return value === 'listing' || value === 'buybox' ? value : null;
+}
+
+const toPricePoint = (r: PricePointRow): PricePoint => ({
+  capturedAt: r.capturedAt,
+  priceText: r.priceText,
+  priceNum: r.priceNum,
+  currency: r.currency,
+  source: toPriceSource(r.source),
+});
+
 export class SqlitePersistence implements Persistence {
   private readonly db: Database;
   private readonly upsertFromSearch;
@@ -152,8 +186,8 @@ export class SqlitePersistence implements Persistence {
       updated_at = excluded.updated_at
   `);
     this.insertSnapshot = this.db.prepare(`
-    INSERT INTO price_snapshots (marketplace, asin, price_text, price_num, currency, captured_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO price_snapshots (marketplace, asin, price_text, price_num, currency, source, captured_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
     this.insertWatch = this.db.prepare(`
     INSERT INTO watches (keyword, marketplace, interval_minutes, last_run_at, created_at)
@@ -180,7 +214,15 @@ export class SqlitePersistence implements Persistence {
           currency,
           updatedAt: now,
         });
-        this.insertSnapshot.run(marketplace, l.asin, l.hasPrice ? l.priceText : null, l.priceNum, currency, now);
+        this.insertSnapshot.run(
+          marketplace,
+          l.asin,
+          l.hasPrice ? l.priceText : null,
+          l.priceNum,
+          currency,
+          'listing',
+          now
+        );
         saved += 1;
       }
       return saved;
@@ -217,6 +259,7 @@ export class SqlitePersistence implements Persistence {
         b.hasBuyBox ? b.priceText : null,
         b.priceNum,
         b.priceNum !== null ? extractCurrency(b.priceText, detail.marketplace) : null,
+        'buybox',
         now
       );
     })();
@@ -226,36 +269,35 @@ export class SqlitePersistence implements Persistence {
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
     const rows = this.db
       .prepare(
-        `SELECT captured_at AS capturedAt, price_text AS priceText, price_num AS priceNum, currency
+        `SELECT captured_at AS capturedAt, price_text AS priceText, price_num AS priceNum,
+                currency, source
          FROM price_snapshots
          WHERE marketplace = ? AND asin = ? AND captured_at >= ?
-         ORDER BY captured_at ASC`
+         ORDER BY captured_at ASC, id ASC`
       )
-      .all(marketplace, asin, since) as Array<{
-      capturedAt: string;
-      priceText: string | null;
-      priceNum: number | null;
-      currency: string | null;
-    }>;
-    return rows;
+      .all(marketplace, asin, since) as PricePointRow[];
+    return rows.map(toPricePoint);
   }
 
-  getRecentSnapshots(marketplace: MarketplaceId, asin: string, limit: number): readonly PricePoint[] {
+  getRecentSnapshots(
+    marketplace: MarketplaceId,
+    asin: string,
+    limit: number,
+    source?: PriceSource
+  ): readonly PricePoint[] {
+    // `(? IS NULL OR source = ?)` 让同一段 SQL 同时支持"不过滤"与"按源过滤"。
+    // 次级排序键用 id：同一毫秒内写入多条时 captured_at 会打平，靠 id 才能定序。
     const rows = this.db
       .prepare(
-        `SELECT captured_at AS capturedAt, price_text AS priceText, price_num AS priceNum, currency
+        `SELECT captured_at AS capturedAt, price_text AS priceText, price_num AS priceNum,
+                currency, source
          FROM price_snapshots
-         WHERE marketplace = ? AND asin = ?
-         ORDER BY captured_at DESC
+         WHERE marketplace = ? AND asin = ? AND (? IS NULL OR source = ?)
+         ORDER BY captured_at DESC, id DESC
          LIMIT ?`
       )
-      .all(marketplace, asin, limit) as Array<{
-      capturedAt: string;
-      priceText: string | null;
-      priceNum: number | null;
-      currency: string | null;
-    }>;
-    return rows.reverse();
+      .all(marketplace, asin, source ?? null, source ?? null, limit) as PricePointRow[];
+    return rows.map(toPricePoint).reverse();
   }
 
   insertAlert(alert: Omit<PriceAlertRecord, 'id' | 'createdAt'>): number {
