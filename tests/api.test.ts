@@ -25,7 +25,6 @@ describe('GET /api/health', () => {
     expect(typeof res.body.chromePath).toBe('string');
     expect(typeof res.body.chromeDetected).toBe('boolean');
     expect(res.body.requestIntervalMs).toBeGreaterThanOrEqual(2000);
-    expect(res.body.maxConcurrentAttempts).toBeLessThanOrEqual(2);
   });
 });
 

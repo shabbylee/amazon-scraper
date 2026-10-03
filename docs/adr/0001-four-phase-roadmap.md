@@ -5,7 +5,7 @@ v1.0 是一个 207 行 `server.js` + 529 行单文件前端的"一次成型"版�
 - **Phase 1 — 工程化重构**：把 `server.js` 拆成 `src/{app,config,browser,scraper,parser,routes}`，明确 Parser/Scraper 分层，加 vitest + supertest、Dockerfile、GitHub Actions。TypeScript 迁移单独走 ADR-0002 决定。
 - **Phase 2 — 抓取稳定性**：在 Phase 1 的边界内引入 Retry（按 `Failure Class` 分类）、Proxy Pool 接口、stealth 插件、多 Marketplace 注册表、CAPTCHA 探测。
 - **Phase 3 — 商品详情**：新增 Detail Scraper 与 Detail Parser，把 Listing schema 扩展到 Buy Box / 卖家 / 运费 / 变体 / 评论数。
-- **Phase 4 — 持久化 + 定时**：SQLite（better-sqlite3）存 Listing / Price Snapshot / Watch，node-cron 调度 Scrape Job，前端加历史曲线与提醒。
+- **Phase 4 — 持久化 + 定时**：SQLite（better-sqlite3）存 Listing / Price Snapshot / Watch，定时调度 Scrape Job，前端加历史曲线与提醒。（此处原写 `node-cron`；实际实现时改选进程内 `setInterval`，理由见 ADR-0006。）
 
 ## 为什么这个顺序
 

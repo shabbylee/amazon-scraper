@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import puppeteer, { type Browser, type LaunchOptions } from 'puppeteer';
 
 /** 系统常见 Chrome/Chromium 路径，按 macOS → Linux → Windows 顺序探测。 */
-const CHROME_PATH_CANDIDATES: readonly string[] = [
+export const CHROME_PATH_CANDIDATES: readonly string[] = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/usr/bin/google-chrome',
   '/usr/bin/chromium-browser',
@@ -47,6 +47,10 @@ export async function launchBrowser(opts: LaunchBrowserOptions): Promise<Browser
   ];
   if (opts.proxy) args.push(`--proxy-server=${opts.proxy}`);
   const launchOpts: LaunchOptions = { headless: opts.headless, args };
-  if (opts.chromePath) launchOpts.executablePath = opts.chromePath;
+  // chromePath 未显式配置时回落到系统探测：README 承诺"不填也能自动找系统 Chrome"，
+  // 而 health 早已基于同一函数上报检测结果，这里必须用同一份逻辑，否则 health 显示就绪、
+  // 抓取却去找 Puppeteer 自带浏览器（版本缺失时直接失败）。
+  const executablePath = opts.chromePath ?? detectChromePath();
+  if (executablePath) launchOpts.executablePath = executablePath;
   return puppeteer.launch(launchOpts);
 }

@@ -33,8 +33,6 @@ export function parseEnvFile(content: string): Record<string, string> {
 
 /** AGENTS.md 硬约束：相邻 Attempt ≥ 2 秒。 */
 export const MIN_REQUEST_INTERVAL_MS = 2000;
-/** AGENTS.md 硬约束：并发 Attempt ≤ 2。 */
-export const MAX_CONCURRENT_ATTEMPTS = 2;
 /** AGENTS.md 抓取伦理：network/timeout 是唯一可自动重试的 Failure Class，重试次数上限 5。 */
 export const MAX_RETRY_ATTEMPTS = 5;
 /** 重试退避同样受限速约束：与相邻 Attempt 一样 ≥ 2 秒。 */
@@ -46,7 +44,6 @@ export interface AppConfig {
   readonly chromePath: string | null;
   readonly defaultMarketplace: MarketplaceId;
   readonly requestIntervalMs: number;
-  readonly maxConcurrentAttempts: number;
   readonly retryMaxAttempts: number;
   readonly retryBackoffMs: number;
   /** 逗号分隔的代理 URL 列表（ADR-0003）；空 = 直连。 */
@@ -68,7 +65,8 @@ export interface LoadConfigOptions {
 
 /**
  * 加载应用配置。优先级：process.env > .env 文件 > 默认值。
- * requestIntervalMs / maxConcurrentAttempts 会被 AGENTS.md 的硬约束夹紧。
+ * requestIntervalMs / retryBackoffMs 会被 AGENTS.md 的限速硬约束夹紧。
+ * 抓取管道为串行执行（见 ADR-0008），因此没有并发度配置。
  */
 export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
   const env = opts.env ?? process.env;
@@ -97,7 +95,6 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
   }
 
   const intervalRaw = Number.parseInt(read('REQUEST_INTERVAL_MS') ?? '2000', 10);
-  const concurrencyRaw = Number.parseInt(read('MAX_CONCURRENT_ATTEMPTS') ?? '1', 10);
   const retryMaxAttemptsRaw = Number.parseInt(read('RETRY_MAX_ATTEMPTS') ?? '3', 10);
   const retryBackoffRaw = Number.parseInt(read('RETRY_BACKOFF_MS') ?? '3000', 10);
   const proxiesRaw = read('PROXIES') ?? '';
@@ -127,10 +124,6 @@ export function loadConfig(opts: LoadConfigOptions = {}): AppConfig {
     requestIntervalMs: Math.max(
       MIN_REQUEST_INTERVAL_MS,
       Number.isFinite(intervalRaw) ? intervalRaw : MIN_REQUEST_INTERVAL_MS
-    ),
-    maxConcurrentAttempts: Math.min(
-      MAX_CONCURRENT_ATTEMPTS,
-      Math.max(1, Number.isFinite(concurrencyRaw) ? concurrencyRaw : 1)
     ),
     retryMaxAttempts: Math.min(
       MAX_RETRY_ATTEMPTS,

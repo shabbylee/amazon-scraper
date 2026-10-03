@@ -8,7 +8,6 @@ services:
       HEADLESS: "true"
       DEFAULT_MARKETPLACE: "com"
       REQUEST_INTERVAL_MS: "2000"
-      MAX_CONCURRENT_ATTEMPTS: "1"
     volumes:
       - ./data:/app/data   # SQLite 持久化（ADR-0006）
     restart: unless-stopped

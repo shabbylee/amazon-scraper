@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   MIN_REQUEST_INTERVAL_MS,
-  MAX_CONCURRENT_ATTEMPTS,
   MAX_RETRY_ATTEMPTS,
   MIN_RETRY_BACKOFF_MS,
   loadConfig,
@@ -46,17 +45,11 @@ describe('loadConfig', () => {
     expect(c.chromePath).toBeNull();
     expect(c.defaultMarketplace).toBe('com');
     expect(c.requestIntervalMs).toBeGreaterThanOrEqual(MIN_REQUEST_INTERVAL_MS);
-    expect(c.maxConcurrentAttempts).toBeLessThanOrEqual(MAX_CONCURRENT_ATTEMPTS);
   });
 
   it('clamps requestIntervalMs to the AGENTS.md hard floor of 2000ms', () => {
     const c = loadConfig(opts({ REQUEST_INTERVAL_MS: '100' }));
     expect(c.requestIntervalMs).toBe(MIN_REQUEST_INTERVAL_MS);
-  });
-
-  it('clamps maxConcurrentAttempts to the AGENTS.md hard ceiling of 2', () => {
-    const c = loadConfig(opts({ MAX_CONCURRENT_ATTEMPTS: '99' }));
-    expect(c.maxConcurrentAttempts).toBe(MAX_CONCURRENT_ATTEMPTS);
   });
 
   it('defaults retry to 3 attempts and 3000ms backoff, clamped to hard bounds', () => {

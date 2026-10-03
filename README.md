@@ -54,7 +54,6 @@ docker compose up --build
 | `CHROME_PATH` | 自动探测 | 手动指定 Chrome 可执行文件路径 |
 | `DEFAULT_MARKETPLACE` | `com` | 默认 Amazon 站点，支持 `com` / `cojp` / `de` / `cn` / `couk` |
 | `REQUEST_INTERVAL_MS` | `2000` | 相邻 Attempt 最小间隔（毫秒）。**硬下限 2000**，配低了会被夹紧 |
-| `MAX_CONCURRENT_ATTEMPTS` | `1` | 并发 Attempt 上限。**硬上限 2**，配高了会被夹紧 |
 | `RETRY_MAX_ATTEMPTS` | `3` | 单页最多物理 Attempt 次数（1 = 不重试）。夹紧 [1,5]；只有 network/timeout 会重试 |
 | `RETRY_BACKOFF_MS` | `3000` | 可重试失败后的退避（毫秒）。**硬下限 2000**，配低了会被夹紧 |
 | `PROXIES` | 空 | 逗号分隔的代理 URL，支持 `http://user:pass@host:port` 认证。1 个 = 按 Job 轮换；≥2 个自动升级为每 Attempt 轮换（ADR-0003）。留空 = 直连 |
@@ -62,7 +61,7 @@ docker compose up --build
 | `WATCH_WEBHOOK_URL` | 空 | Watch 价格变动提醒 Webhook URL（ADR-0007）；留空 = 不发送提醒 |
 | `WATCH_PRICE_CHANGE_PCT` | `1` | 提醒阈值（百分比，夹紧 [0.01, 100]）：涨跌超过该值才触发 Webhook |
 
-后两个硬约束来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。
+标注为硬约束的变量来自 [`AGENTS.md`](AGENTS.md) 的抓取伦理，改约束前请先记录 ADR。抓取管道串行执行，没有并发度配置（ADR-0008）。
 
 ## 项目结构
 
@@ -73,10 +72,11 @@ amazon-scraper/
 ├── tsconfig.build.json       # 构建用（只 src，不含 *.test.ts）
 ├── vitest.config.ts
 ├── .prettierrc.json
+├── LICENSE                   # MIT
 ├── Dockerfile                # multi-stage: builder + runner(node:20 + chromium)
 ├── docker-compose.yml
 ├── .dockerignore
-├── .github/workflows/ci.yml  # Node 20/22 矩阵 + docker build
+├── .github/workflows/ci.yml  # Node 20/22/24/26 矩阵 + docker build
 ├── .env.example
 ├── AGENTS.md                 # 工作方式与抓取伦理
 ├── CONTEXT.md                # 领域术语表
@@ -87,7 +87,9 @@ amazon-scraper/
 │   │   ├── 0003-proxy-pool.md
 │   │   ├── 0004-marketplace-registry.md
 │   │   ├── 0005-product-detail.md
-│   │   └── 0006-persistence.md
+│   │   ├── 0006-persistence.md
+│   │   ├── 0007-price-alert.md
+│   │   └── 0008-scrape-concurrency.md
 │   └── agents/               # mattpocock skill 约定（domain / issue-tracker / triage-labels）
 ├── .scratch/                 # 本地 issue tracker（retry-policy / proxy-pool / stealth / multi-marketplace / scrape-api-mock-tests / proxy-auth / proxy-rotation / product-detail / persistence / price-alert）
 ├── src/
@@ -110,7 +112,7 @@ amazon-scraper/
 │   │   ├── watch.ts          # POST/GET /api/watch + DELETE /api/watch/:id
 │   │   └── browser-runner.ts # 按代理配置解析 Job 浏览器（共享 vs 每 Attempt 轮换）
 │   ├── scraper/
-│   │   ├── browser.ts        # detectChromePath + launchBrowser（支持 --proxy-server）
+│   │   ├── browser.ts        # detectChromePath + launchBrowser（未配 CHROME_PATH 时回落系统探测）
 │   │   ├── proxy.ts          # ProxyPool 接口 + Static/Noop + createProxyPool（ADR-0003）
 │   │   ├── proxy-auth.ts     # CDP Fetch 域注入 Proxy-Authorization（ADR-0003）
 │   │   ├── stealth.ts        # 轻量反自动化指纹（零依赖）
@@ -140,10 +142,10 @@ amazon-scraper/
   "headless": true,
   "defaultMarketplace": "com",
   "requestIntervalMs": 2000,
-  "maxConcurrentAttempts": 1,
   "retryMaxAttempts": 3,
   "retryBackoffMs": 3000,
-  "proxyPoolSize": 0
+  "proxyPoolSize": 0,
+  "webhookEnabled": false
 }
 ```
 
@@ -373,7 +375,7 @@ Parser 与 Scraper 严格分层：Parser 是纯函数（DOM → 领域对象，�
 | `npm test` | vitest run（parser / config / proxy / stealth / search / detail / db / scheduler / API，含 mock 集成） |
 | `npm run test:watch` | vitest 交互模式 |
 
-CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 + 22 矩阵的 install → typecheck → build → test，最后 docker build 一次。
+CI（`.github/workflows/ci.yml`）在 push / PR 到 `main` 时跑 Node 20 / 22 / 24 / 26 矩阵的 install → typecheck → build → test，最后 docker build 一次。
 
 ## 路线图
 

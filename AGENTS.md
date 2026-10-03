@@ -20,10 +20,10 @@
 Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改动前必须先记录 ADR：
 
 - **匿名访问**：不登录、不持久化 Cookie、不携带用户凭证。
-- **限速**：同一 Marketplace 相邻 Attempt 至少间隔 2 秒；并发 Attempt ≤ 2。
+- **限速**：同一 Marketplace 相邻 Attempt 至少间隔 2 秒。抓取管道串行执行（并发恒为 1），天然满足"并发 Attempt ≤ 2"的上限；没有并发度开关，见 `docs/adr/0008-scrape-concurrency.md`。
 - **尊重 CAPTCHA**：识别到验证码页面即归类为 `captcha` 失败态并停止重试该 Job，**不换代理、不打码、不切账号**。
 - **真实 UA + 合理 Header**：使用主流浏览器 UA，不伪装 Amazon 官方客户端。
-- **失败要分类**：`network` / `timeout` / `captcha` / `parser-miss` / `unknown`；只有前两类可以自动重试（最多 3 次，指数退避 1s → 2s → 4s）。
+- **失败要分类**：`network` / `timeout` / `captcha` / `parser-miss` / `unknown`；只有前两类可以自动重试。次数由 `RETRY_MAX_ATTEMPTS` 控制（夹紧 [1,5]，默认 3），每次重试前固定退避 `RETRY_BACKOFF_MS`（夹紧 ≥ 2000ms，默认 3000ms）。
 - **代理只做端点管理**：Proxy Pool 负责分配 / 冷却 / 归还，不做任何反爬绕过；命中 CAPTCHA 时不把当前代理标记为失败（那不是代理的锅）。
 
 ## 命令
@@ -44,14 +44,14 @@ Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改
 | Docker 构建 | `docker build -t amazon-scraper:local .` |
 | Docker 运行 | `docker compose up --build`（映射 3456） |
 
-CI 走 `.github/workflows/ci.yml`（Node 20 + 22 矩阵：install → typecheck → build → test → docker build）。
+CI 走 `.github/workflows/ci.yml`（Node 20 / 22 / 24 / 26 矩阵：install → typecheck → build → test → docker build）。
 
 ## 代码约定
 
 - **TypeScript strict + ESM**：后端源码在 `src/`，编译到 `dist/`；`"type": "module"`，`NodeNext` 模块解析，所有相对 import 必须带 `.js` 扩展名。决定与迁移代价见 `docs/adr/0002-typescript-migration.md`；再改模块系统或语言需新 ADR。
 - **Node ≥ 20**：跟 `package.json#engines` 与 Dockerfile base image 保持一致。
 - **无框架前端**：`public/index.html` 单文件，保持零依赖；如要引入构建流程，走 ADR。
-- **配置统一从 `src/config.ts` 读**：`loadConfig({ env, envFilePath })` 会把 `process.env` 覆盖到 `.env` 之上，并把 `requestIntervalMs` / `maxConcurrentAttempts` 夹紧到 AGENTS.md 硬约束。**不要**在业务代码里直接读 `process.env` 或硬编码常量。
+- **配置统一从 `src/config.ts` 读**：`loadConfig({ env, envFilePath })` 会把 `process.env` 覆盖到 `.env` 之上，并把 `requestIntervalMs` / `retryBackoffMs` 夹紧到 AGENTS.md 的限速硬约束。**不要**在业务代码里直接读 `process.env` 或硬编码常量。
 - **Parser 与 Scraper 严格分层**：Parser 是纯函数（DOM → 领域对象），Scraper 才碰 browser/IO/retry。跨层的类型都在 `src/types.ts`。
 - **提交信息前缀**：`feat:` / `fix:` / `chore:` / `docs:` / `refactor:` / `test:`；breaking change 用 `!` 后缀（如 `refactor!:`）并在正文写 `BREAKING CHANGE:`。
 - **不 `push` 到 `main` 除非用户明确要求**；本地 `git commit` 可以随时做。
