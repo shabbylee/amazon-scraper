@@ -650,7 +650,10 @@ function renderDetail(d) {
       <div><div class="lbl">Prime</div><div>${b.isPrime ? '✓' : '—'}</div></div>
       <div><div class="lbl">库存</div><div>${b.inStock ? '有货' : '无货'}</div></div>
     </div>
-    ${d.variants && d.variants.length ? `<div class="detail-variants">变体：${d.variants.map(esc).join(' / ')}</div>` : ''}
+    ${d.variants && d.variants.length ? `<div class="detail-variants">${d.variants.map((dim) => {
+      const opts = (dim.options || []).map((o) => esc(o.label)).join(' / ');
+      return `${esc(dim.title || dim.name)}: ${opts}`;
+    }).join('<br>')}</div>` : ''}
     <div style="margin-top:12px;text-align:right;">
       <button class="mini-btn" id="detail-history">价格历史</button>
       <a class="mini-btn" href="${esc(d.href || '#')}" target="_blank" rel="noopener">打开商品页 →</a>

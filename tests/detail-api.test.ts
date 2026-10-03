@@ -33,7 +33,15 @@ const detailRaw = {
   shippingText: 'FREE delivery',
   isPrime: true,
   inStock: true,
-  variants: ['Mineral Silver'],
+  variants: [
+    {
+      name: 'color_name',
+      title: 'Color',
+      options: [
+        { asin: 'B09S3HNMHF', label: 'Mineral Silver 1 option from $249.00' },
+      ],
+    },
+  ],
 };
 
 function makePage(opts: { raw?: unknown; captcha?: boolean } = {}) {

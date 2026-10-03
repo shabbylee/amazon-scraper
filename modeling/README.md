@@ -19,6 +19,14 @@ PYTHONPATH=src /Users/lixu/.dsh/dsh-runtimes/dsh-primary-runtime/dependencies/py
 
 数据库不存在时会提示先启动采集层（`npm start`）生成 `data/amazon.db`。
 
+## Value Delta（单 Listing）
+
+```bash
+PYTHONPATH=src <python3.12> scripts/value_delta.py B0HFVPJ71V com
+```
+
+读取 `listings.variants`（TS 落库的 twisterPlus JSON 契约），拆配置向量、算单 Listing 配置边际价值。规格见 `.scratch/value-delta/spec.md`。
+
 ## 测试
 
 ```bash
@@ -32,11 +40,15 @@ modeling/
 ├── pyproject.toml
 ├── README.md
 ├── scripts/
-│   └── inspect_db.py      # 验证 TS→Python 的 SQLite 衔接
+│   ├── inspect_db.py      # 验证 TS→Python 的 SQLite 衔接
+│   └── value_delta.py     # 单 Listing 配置边际价值表
 ├── src/
 │   └── modeling/
 │       ├── __init__.py
-│       └── connect.py     # 只读打开 data/amazon.db
+│       ├── connect.py     # 只读打开 data/amazon.db + variants 读取
+│       └── value_delta.py # 配置向量拆解 + 价差计算
+└── tests/
+    └── test_value_delta.py
 ```
 
 ## 依赖

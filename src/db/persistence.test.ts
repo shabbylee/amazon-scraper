@@ -69,6 +69,17 @@ describe('saveScrapeResult', () => {
 });
 
 describe('saveDetail', () => {
+  const detailVariants = [
+    {
+      name: 'color_name',
+      title: 'Color',
+      options: [
+        { asin: 'B0DETAIL01', label: 'Black', priceText: null, priceNum: null, currency: null, unavailable: false },
+        { asin: 'B0DETAIL02', label: 'White', priceText: null, priceNum: null, currency: null, unavailable: false },
+      ],
+    },
+  ];
+
   const detail: ProductDetail = {
     marketplace: 'com',
     asin: 'B0DETAIL01',
@@ -86,7 +97,7 @@ describe('saveDetail', () => {
       isPrime: true,
       inStock: true,
     },
-    variants: ['Black', 'White'],
+    variants: detailVariants,
   };
 
   it('persists the detail with Buy Box fields and a snapshot', () => {
@@ -97,7 +108,7 @@ describe('saveDetail', () => {
     expect(rows.seller_name).toBe('Amazon.com');
     expect(rows.is_prime).toBe(1);
     expect(rows.in_stock).toBe(1);
-    expect(rows.variants).toBe('["Black","White"]');
+    expect(rows.variants).toBe(JSON.stringify(detailVariants));
     expect(store.getHistory('com', 'B0DETAIL01', 30)).toHaveLength(1);
   });
 });

@@ -1,4 +1,11 @@
-import { MARKETPLACES, type BuyBox, type MarketplaceId, type ProductDetail } from '../types.js';
+import {
+  MARKETPLACES,
+  type BuyBox,
+  type MarketplaceId,
+  type ProductDetail,
+  type VariantDimension,
+  type VariantOption,
+} from '../types.js';
 import { parsePriceNum } from './search-page.js';
 
 /**
@@ -83,11 +90,20 @@ export function extractDetailInPage(): unknown {
 
   const hasBuyBox = Boolean(priceText);
 
-  // 变体：当前选中项 + 可选值文本，去重去空（文本级，不做结构化）
-  const variants: string[] = [];
-  document.querySelectorAll('#variation .selection, #variation .twisterTextDiv').forEach((el) => {
-    const t = text(el);
-    if (t && !variants.includes(t)) variants.push(t);
+  // 变体：twisterPlus（Value Delta 切片）——提取维度行原始结构，Node 侧 parseVariations 解析。
+  // 选项取 li 全文而非按钮窄文本：价格段（起始价/from）只在全文里出现。
+  const variantRows: Array<{ name: string; title: string; options: Array<{ asin: string; label: string }> }> = [];
+  document.querySelectorAll('[id^="inline-twister-row-"]').forEach((row) => {
+    const dimId = (row.id ?? '').replace('inline-twister-row-', '');
+    if (!dimId) return;
+    const title = text(document.querySelector(`#inline-twister-dim-title-${dimId}`));
+    const options: Array<{ asin: string; label: string }> = [];
+    row.querySelectorAll('li[data-asin]').forEach((li) => {
+      const asin = li.getAttribute('data-asin') ?? '';
+      const label = text(li);
+      if (asin && label) options.push({ asin, label });
+    });
+    if (options.length > 0) variantRows.push({ name: dimId, title, options });
   });
 
   return {
@@ -101,7 +117,7 @@ export function extractDetailInPage(): unknown {
     shippingText,
     isPrime,
     inStock,
-    variants,
+    variants: variantRows,
   };
 }
 
@@ -110,6 +126,96 @@ const asNullableNumber = (v: unknown): number | null =>
   typeof v === 'number' && Number.isFinite(v) ? v : null;
 const asNullableString = (v: unknown): string | null =>
   typeof v === 'string' && v.length > 0 ? v : null;
+
+/** 变体选项里的起始价：中文"起始价：CNY X" / 英文"from $X"；捕获币种+数字串。 */
+const VARIANT_PRICE_RE =
+  /(?:起始价|from)\s*[：:]?\s*((?:CNY|US\$|\$|€|£|JP¥|¥)\s*[\d,]+(?:\.\d+)?)/i;
+
+const UNAVAILABLE_MARKERS = [
+  '目前无货',
+  'currently unavailable',
+  'temporarily out of stock',
+  'out of stock',
+  '无法配送',
+] as const;
+
+const CURRENCY_CODES = ['CNY', 'JPY', 'EUR', 'GBP', 'USD', 'AUD', 'CAD'] as const;
+
+function extractVariantCurrency(text: string): string | null {
+  const t = text.toUpperCase();
+  for (const code of CURRENCY_CODES) {
+    if (t.includes(code)) return code;
+  }
+  if (t.includes('€')) return 'EUR';
+  if (t.includes('£')) return 'GBP';
+  if (t.includes('$')) return 'USD';
+  if (t.includes('¥')) return 'CNY';
+  return null;
+}
+
+/** 从选项全文拆出清洗后的配置文本与起始价。 */
+function parseVariantText(fullText: string): Pick<VariantOption, 'label' | 'priceText' | 'priceNum'> {
+  const normalized = fullText.replace(/\s+/g, ' ').trim();
+
+  let priceText: string | null = null;
+  let priceNum: number | null = null;
+  const pm = normalized.match(VARIANT_PRICE_RE);
+  if (pm?.[1]) {
+    priceText = pm[1].trim();
+    const digits = pm[1].match(/[\d,]+(?:\.\d+)?/);
+    if (digits) {
+      const n = Number.parseFloat(digits[0].replace(/,/g, ''));
+      if (Number.isFinite(n)) priceNum = n;
+    }
+  }
+
+  // 配置 = "N个选项/N options" 之前的文本；无该标记则取全文。
+  const cut = normalized.match(/^(.*?)\d+\s*(?:个选项|options?)/i)?.[1] ?? normalized;
+  const label = cut
+    .replace(/\/\*[\s\S]*?\*\//g, '') // CSS 注释垃圾
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { label, priceText, priceNum };
+}
+
+function isUnavailable(text: string): boolean {
+  const t = text.toLowerCase();
+  return UNAVAILABLE_MARKERS.some((m) => t.includes(m.toLowerCase()));
+}
+
+/**
+ * 把浏览器侧返回的 twisterPlus 原始结构解析成 VariantDimension[]。
+ * 历史兼容：读到的旧 string[]（非法结构）会被整体跳过，返回空数组。
+ */
+export function parseVariations(raw: unknown): readonly VariantDimension[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VariantDimension[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'object' || item === null) continue;
+    const name = asString((item as { name?: unknown }).name);
+    if (!name) continue;
+    const title = asString((item as { title?: unknown }).title);
+    const options: VariantOption[] = [];
+    const rawOptions = (item as { options?: unknown }).options;
+    if (!Array.isArray(rawOptions)) continue;
+    for (const opt of rawOptions) {
+      if (typeof opt !== 'object' || opt === null) continue;
+      const asin = asString((opt as { asin?: unknown }).asin);
+      const fullText = asString((opt as { label?: unknown }).label);
+      if (!asin || !fullText) continue;
+      const parsed = parseVariantText(fullText);
+      options.push({
+        asin,
+        ...parsed,
+        currency: parsed.priceText ? extractVariantCurrency(parsed.priceText) : null,
+        unavailable: isUnavailable(fullText),
+      });
+    }
+    if (options.length > 0) out.push({ name, title, options });
+  }
+  return out;
+}
 
 /** Node 侧：校验并把浏览器返回的 unknown 转成 ProductDetail；title 缺失视为未抓到详情页。 */
 export function toDetail(raw: unknown, marketplace: MarketplaceId, asin: string): ProductDetail | null {
@@ -140,6 +246,6 @@ export function toDetail(raw: unknown, marketplace: MarketplaceId, asin: string)
     rating: asNullableNumber(r.rating),
     reviewCount: asNullableNumber(r.reviewCount),
     buyBox,
-    variants: Array.isArray(r.variants) ? r.variants.filter((v) => typeof v === 'string') : [],
+    variants: parseVariations(r.variants),
   };
 }

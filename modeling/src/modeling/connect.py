@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -40,3 +41,21 @@ def table_counts(conn: sqlite3.Connection) -> dict[str, int]:
         except sqlite3.OperationalError:
             out[name] = -1
     return out
+
+
+def read_listing_variants(
+    conn: sqlite3.Connection, marketplace: str, asin: str
+) -> list[object] | None:
+    """读 listings.variants 列并解析 JSON。
+
+    契约见 .scratch/value-delta/spec.md；旧 string[] 记录按原样返回，
+    由调用方（value_delta）做结构兼容判断。
+    """
+    row = conn.execute(
+        "SELECT variants FROM listings WHERE marketplace = ? AND asin = ?",
+        (marketplace, asin),
+    ).fetchone()
+    if row is None or not row["variants"]:
+        return None
+    data = json.loads(row["variants"])
+    return data if isinstance(data, list) else None

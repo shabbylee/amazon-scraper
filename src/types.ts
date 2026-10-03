@@ -122,6 +122,25 @@ export interface BuyBox {
   readonly inStock: boolean;
 }
 
+/** 变体维度里的单个选项（ADR-0005 扩展，Value Delta 切片）。 */
+export interface VariantOption {
+  readonly asin: string;
+  /** 清洗后的配置文本，去掉价格段 / N个选项 / 库存状态 / CSS 注释。 */
+  readonly label: string;
+  /** 起始价原始串（含币种符号，如 "CNY 7,372.27" / "$739.99"）。 */
+  readonly priceText: string | null;
+  readonly priceNum: number | null;
+  readonly currency: string | null;
+  readonly unavailable: boolean;
+}
+
+/** twisterPlus 的一个变体维度（inline-twister-row）。 */
+export interface VariantDimension {
+  readonly name: string;
+  readonly title: string;
+  readonly options: readonly VariantOption[];
+}
+
 /** ProductDetail：商品详情页数据，与 Listing 并列的领域类型（ADR-0005）。 */
 export interface ProductDetail {
   readonly marketplace: MarketplaceId;
@@ -132,8 +151,8 @@ export interface ProductDetail {
   readonly rating: number | null;
   readonly reviewCount: number | null;
   readonly buyBox: BuyBox;
-  /** 可见变体行文本（颜色/尺寸等），不做结构化映射（ADR-0005）。 */
-  readonly variants: readonly string[];
+  /** twisterPlus 变体维度（结构化）；无变体为空数组。 */
+  readonly variants: readonly VariantDimension[];
 }
 
 export interface DetailJob {
