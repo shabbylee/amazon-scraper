@@ -45,7 +45,7 @@ Amazon 是会主动反爬的第三方站点。以下规则是**硬约束**，改
 | Docker 构建 | `docker build -t amazon-scraper:local .` |
 | Docker 运行 | `docker compose up --build`（映射 3456） |
 
-CI 走 `.github/workflows/ci.yml`（Node 20 / 22 / 24 / 26 矩阵：install → typecheck → build → test → docker build）。
+CI 走 `.github/workflows/ci.yml`：`build-and-test` 在 Node 20 / 22 / 24 / 26 矩阵上跑 install → typecheck → build → test，`python-modeling` 在 Python 3.11 / 3.12 上跑 `uv sync --frozen` + `modeling/` 的 unittest，`docker` 依赖 `build-and-test` 的结果。
 
 ## 代码约定
 

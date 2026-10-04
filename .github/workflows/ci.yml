@@ -12,7 +12,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x]
+        # 20/22 是 engines 下限附近的基线；24/26 覆盖更新的 V8，
+        # 防止原生模块（better-sqlite3）在不被覆盖的版本上静默失配。
+        node-version: [20.x, 22.x, 24.x, 26.x]
     env:
       # 测试只覆盖 parser / config / route validation，不 launch 浏览器，
       # 跳过 Puppeteer 的 Chromium 下载能把 CI 时长压掉 ~30s。
@@ -37,6 +39,38 @@ jobs:
 
       - name: Test
         run: npm test
+
+  python-modeling:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 是 modeling/pyproject.toml 的 requires-python 下限，
+        # 3.12 是本地开发与 bundled runtime 的版本，两端都守。
+        python-version: ["3.11", "3.12"]
+    defaults:
+      run:
+        working-directory: modeling
+    steps:
+      - uses: actions/checkout@v4
+
+      # 由 uv 单点管理解释器版本：若另用 setup-python，uv 可能选中自己
+      # 下载的解释器，使矩阵声明的版本实际没有被执行。
+      - name: Install uv and Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      # uv.lock 是建模层依赖的唯一事实来源。--frozen 让锁文件与
+      # pyproject.toml 不一致时直接失败，而不是就地重新解析。
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      # 测试是纯标准库 unittest，不读 data/amazon.db，
+      # 因此无需采集层产物即可在 CI 中独立运行。
+      - name: Test
+        run: uv run --frozen python -m unittest discover -s tests -v
 
   docker:
     runs-on: ubuntu-latest
