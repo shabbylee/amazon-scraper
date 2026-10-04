@@ -68,4 +68,6 @@ modeling/
 
 ## 依赖
 
-`numpy` / `pandas` 已随 bundled Python 提供。后续建模需要的 `scipy`、`statsmodels` 等用 `uv` 按需追加，不提前堆依赖。
+当前建模层**零第三方依赖**：全部逻辑用标准库（`re` / `sqlite3` / `statistics` / `dataclasses`），测试用 `unittest`。`pyproject.toml` 的 `dependencies` 保持为空，后续建模需要的 `numpy` / `pandas` / `scipy` / `statsmodels` 用 `uv add` 按需追加，不提前堆依赖。
+
+`uv.lock` 是依赖的唯一事实来源；CI 用 `uv sync --frozen` 校验它与 `pyproject.toml` 一致，不一致即失败。

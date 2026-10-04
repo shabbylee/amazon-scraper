@@ -3,10 +3,9 @@ name = "wowpc-modeling"
 version = "0.1.0"
 description = "WOWPC AI 商业智能系统建模层：Value Delta、BSR→销量、市场价值模型"
 requires-python = ">=3.11"
-dependencies = [
-    "numpy>=2.0",
-    "pandas>=2.2",
-]
+# 当前零第三方依赖：全部逻辑用标准库（re / sqlite3 / statistics / dataclasses）。
+# 需要 numpy / pandas / scipy 时用 `uv add` 追加，uv.lock 会同步更新。
+dependencies = []
 
 [tool.setuptools]
 # 骨架阶段不打包；脚本经 PYTHONPATH=src 直接运行。
