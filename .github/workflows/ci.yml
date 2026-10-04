@@ -80,3 +80,26 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t amazon-scraper:ci .
+
+      # docker build 只证明镜像能构建；跨阶段搬运的原生模块能否在运行时加载、
+      # 容器不挂卷时能否自建 data/，都需要真跑一次才算验证。
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name scraper-smoke amazon-scraper:ci
+          ok=0
+          for i in $(seq 1 30); do
+            sleep 2
+            if docker exec scraper-smoke node -e "fetch('http://127.0.0.1:3456/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              ok=1
+              echo "健康检查在第 $((i*2)) 秒通过"
+              break
+            fi
+          done
+          docker logs scraper-smoke 2>&1 | tail -25 || true
+          docker stop scraper-smoke >/dev/null 2>&1 || true
+          if [ "$ok" != "1" ]; then
+            echo "::error::容器未在 60 秒内通过 /api/health 健康检查"
+            exit 1
+          fi
+          echo "容器 smoke test 通过"
